@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<title>Tableau de bord sécheresse</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: Marianne, sans-serif;
+  font-size: 12px;
+  background: #f4f6f9;
+  color: #222;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Header */
+header {
+  background: #1565c0;
+  color: white;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+header h1 { font-size: 14px; font-weight: 700; flex: 1; }
+.header-link {
+  font-size: 11px; background: rgba(255,255,255,.2); border-radius: 10px;
+  padding: 2px 8px; color: white; text-decoration: none; white-space: nowrap;
+}
+.header-link:hover { background: rgba(255,255,255,.35); }
+
+/* Toolbar dates */
+#toolbar {
+  background: white;
+  border-bottom: 1px solid #ddd;
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+#toolbar label { font-size: 11px; color: #546e7a; font-weight: 600; }
+#toolbar input[type=date] {
+  padding: 3px 6px; border: 1px solid #ccc; border-radius: 4px;
+  font-size: 12px; background: #fafafa;
+}
+#toolbar button {
+  padding: 4px 10px; border: none; border-radius: 4px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.btn-blue   { background: #1565c0; color: white; }
+.btn-grey   { background: #eceff1; color: #546e7a; }
+.btn-green  { background: #2e7d32; color: white; }
+.btn-right  { margin-left: auto; }
+
+/* Filtre stations */
+#filter-bar {
+  background: #fafafa;
+  border-bottom: 1px solid #ddd;
+  padding: 5px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+#filter-bar label { font-size: 11px; color: #546e7a; font-weight: 600; white-space: nowrap; }
+#st-filter-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  flex: 1;
+}
+.st-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  border: 1px solid #90caf9;
+  background: #e3f2fd;
+  color: #1565c0;
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+  transition: background .15s, color .15s;
+}
+.st-chip.off {
+  background: #eceff1;
+  border-color: #cfd8dc;
+  color: #90a4ae;
+  text-decoration: line-through;
+}
+.st-chip:hover { filter: brightness(.93); }
+.chip-btn-xs {
+  padding: 2px 7px; border: 1px solid #cfd8dc; border-radius: 4px;
+  background: white; cursor: pointer; font-size: 11px; color: #546e7a;
+  white-space: nowrap;
+}
+.chip-btn-xs:hover { background: #e3f2fd; color: #1565c0; }
+
+/* Légende seuils */
+#legende {
+  background: white;
+  border-bottom: 1px solid #ddd;
+  padding: 4px 14px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.leg { display: flex; align-items: center; gap: 5px; font-size: 11px; }
+.leg-box { width: 18px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+.leg-none  { background: #ffffff; border: 1px solid #ddd; }
+.leg-v     { background: #FFF9C4; }
+.leg-a     { background: #FFE082; }
+.leg-ar    { background: #FFA726; }
+.leg-cr    { background: #EF5350; }
+.leg-nodata{ background: #eeeeee; }
+#unit-note { font-size: 10px; color: #90a4ae; margin-left: auto; font-style: italic; }
+
+/* Tableau */
+#wrap { flex: 1; overflow: auto; padding: 10px 14px; }
+
+table { border-collapse: collapse; font-size: 11.5px; white-space: nowrap; }
+
+/* En-têtes fixes */
+thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #1565c0;
+  color: white;
+  padding: 5px 8px;
+  text-align: center;
+  font-weight: 700;
+  border: 1px solid #0d47a1;
+}
+thead tr:nth-child(2) th { background: #1976d2; font-size: 10px; font-weight: 400; }
+thead tr:nth-child(3) th { background: #1e88e5; font-size: 10px; }
+
+th.col-date, td.col-date {
+  position: sticky; left: 0; z-index: 2;
+  background: #e3f2fd; font-weight: 700;
+  min-width: 76px; border-right: 2px solid #90caf9;
+}
+thead th.col-date { z-index: 5; background: #0d47a1; color: white; }
+
+.th-link {
+  color: #90caf9;
+  text-decoration: none;
+  font-family: monospace;
+  font-size: 9px;
+  opacity: .85;
+}
+.th-link:hover { color: white; text-decoration: underline; opacity: 1; }
+
+td {
+  padding: 3px 7px;
+  text-align: right;
+  border: 1px solid #e0e0e0;
+  min-width: 68px;
+  font-variant-numeric: tabular-nums;
+}
+tr:hover td { filter: brightness(0.93); }
+td.col-date { text-align: center; font-size: 11px; color: #1565c0; }
+
+/* Couleurs seuils */
+.c-ok { background: #ffffff; }
+.c-v  { background: #FFF9C4; }
+.c-a  { background: #FFE082; }
+.c-ar { background: #FFA726; color: #333; }
+.c-cr { background: #EF5350; color: white; font-weight: 700; }
+.c-nd { background: #eeeeee; color: #bbb; }
+
+/* Lignes de seuils */
+.seuil-row td { font-weight: 700; font-size: 10.5px; text-align: right; border-top: 1px solid #bbb; }
+.seuil-v  td { background: #FFF9C4; }
+.seuil-a  td { background: #FFE082; }
+.seuil-ar td { background: #FFA726; }
+.seuil-cr td { background: #EF5350; color: white; }
+.seuil-row td.col-date { color: inherit; }
+
+#msg { padding: 40px; text-align: center; color: #90a4ae; font-style: italic; font-size: 13px; }
+
+@media print {
+  header, #toolbar, #filter-bar, #legende { display: none !important; }
+  #wrap { overflow: visible; }
+  body { overflow: visible; height: auto; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>💧 Tableau de bord sécheresse — Débits journaliers (m³/s)</h1>
+  <a id="link-suivi-ap" class="header-link" href="#" target="_blank" style="display:none;">📄 Suivi AP sécheresse</a>
+  <span id="badge" style="font-size:11px;background:rgba(255,255,255,.2);border-radius:10px;padding:2px 8px">Connexion…</span>
+</header>
+
+<!-- Filtre dates -->
+<div id="toolbar">
+  <label>Du :</label><input type="date" id="d1"/>
+  <label>Au :</label><input type="date" id="d2"/>
+  <button class="btn-blue" id="btn-apply">Appliquer</button>
+  <button class="btn-grey" id="btn-last15">📅 15 derniers jours</button>
+  <button class="btn-grey" id="btn-reset">Tout afficher</button>
+  <button class="btn-grey" id="btn-refresh">🔄 Rafraîchir</button>
+  <button class="btn-green btn-right" id="btn-export-copy">📋 Copier tableau</button>
+  <button class="btn-green btn-right" id="btn-export-xlsx">📊 Exporter XLSX</button>
+  <button class="btn-grey" id="btn-export-print" style="margin-left:4px">🖨 Imprimer</button>
+  <button class="btn-grey" id="btn-export-image" style="margin-left:4px">📸 Exporter en PNG</button>
+</div>
+
+<!-- Filtre stations -->
+<div id="filter-bar">
+  <label>Stations :</label>
+  <button class="chip-btn-xs" id="chip-all">Tout</button>
+  <button class="chip-btn-xs" id="chip-none">Aucun</button>
+  <div id="st-filter-list"></div>
+</div>
+
+<!-- Légende -->
+<div id="legende">
+  <strong style="font-size:11px;color:#546e7a">Seuils :</strong>
+  <div class="leg"><div class="leg-box leg-none"></div>Normal</div>
+  <div class="leg"><div class="leg-box leg-v"></div>Vigilance</div>
+  <div class="leg"><div class="leg-box leg-a"></div>Alerte</div>
+  <div class="leg"><div class="leg-box leg-ar"></div>Alerte renforcée</div>
+  <div class="leg"><div class="leg-box leg-cr"></div>Crise</div>
+  <div class="leg"><div class="leg-box leg-nodata"></div>Sans donnée</div>
+  <span id="unit-note">Données Hub'Eau converties l/s → m³/s (÷ 1000)</span>
+</div>
+
+<div id="wrap">
+  <div id="msg">Connexion à Grist…</div>
+  <table id="tbl" style="display:none">
+    <thead id="thead"></thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+
+<script>
+// État global
+let allSuivi      = [];
+let allStations   = [];
+let dateRange     = { start: null, end: null };
+let stationFilter = new Set();
+let loadedSuivi   = false;
+let loadedStations= false;
+let defaultRangeSet = false;
+
+// État sécheresse (arrêté en vigueur)
+let currentArrete   = null;        // {id, date}
+let niveauByZone     = new Map();  // zoneId (rowId Zones_alerte_secheresse) -> code ('So'|'V'|'A'|'AR'|'C')
+let zoneNameById      = new Map(); // zoneId -> nom simple
+
+const NIVEAU_STYLES = {
+  'So': { label: 'Sans objet',       color: '#ffffff', text: '#333' },
+  'V':  { label: 'Vigilance',        color: '#FFF9C4', text: '#333' },
+  'A':  { label: 'Alerte',           color: '#FFE082', text: '#333' },
+  'AR': { label: 'Alerte renforcée', color: '#FFA726', text: '#333' },
+  'C':  { label: 'Crise',            color: '#EF5350', text: '#fff' },
+};
+function niveauStyle(code) {
+  return NIVEAU_STYLES[code] || { label: 'Non défini', color: '#eeeeee', text: '#999' };
+}
+
+// ==== Liens vers les autres widgets (à renseigner une fois, voir instructions en fin de réponse) ====
+// URL de la page Grist du widget "Suivi AP sécheresse". Laisser vide pour masquer le lien.
+const SUIVI_AP_URL = 'https://grist.numerique.gouv.fr/o/gqddtm11/2ECP8nHyTHpa/suivihydro/p/9';
+// Modèle de lien vers le widget graphique d'une station : {CODE} sera remplacé par le code hydro
+// (ex: 'https://.../p/9?station={CODE}' si ce widget lit un paramètre d'URL). Laisser vide pour masquer.
+const STATION_GRAPH_URL_TEMPLATE = 'https://grist.numerique.gouv.fr/o/gqddtm11/2ECP8nHyTHpa/suivihydro/p/6';
+// Clé localStorage utilisée pour transmettre la station cliquée au widget graphique
+// (ouvert dans un nouvel onglet) : les deux widgets doivent être servis depuis le même domaine
+// pour que le navigateur partage ce localStorage entre les deux onglets.
+const GRAPH_STATION_STORAGE_KEY = 'grist_graph_station_code';
+function setGraphStationCode(code) {
+  try { localStorage.setItem(GRAPH_STATION_STORAGE_KEY, code); } catch (e) { /* localStorage indisponible : lien simple sans présélection */ }
+}
+
+const DEFAULT_RANGE_DAYS = 15;
+const AXE_AUDE_ORDER = ['Belvianes', 'Carcassonne', 'Moussoulens'];
+
+// Utilitaires
+function tsToISO(v) {
+  if (v == null) return null;
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0,10);
+  if (typeof v === 'number') return new Date(v * 1000).toISOString().slice(0,10);
+  return null;
+}
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  const [y,m,d] = iso.split('-');
+  return `${d}/${m}/${y.slice(2)}`;
+}
+
+function fmtDateFR(sec) {
+  if (sec == null) return '—';
+  return new Date(sec * 1000).toLocaleDateString('fr-FR', { timeZone: 'UTC' });
+}
+
+function addDaysISO(iso, days) {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0,10);
+}
+
+function applyLastDaysRange() {
+  const rawDates = allSuivi.map(r => tsToISO(r.dat_obs_elab)).filter(Boolean);
+  if (!rawDates.length) return false;
+  const maxISO = rawDates.reduce((a, b) => (b > a ? b : a));
+  dateRange.end   = maxISO;
+  dateRange.start = addDaysISO(maxISO, -(DEFAULT_RANGE_DAYS - 1));
+  return true;
+}
+
+function fmtM3s(val) {
+  if (val == null) return '—';
+  return val.toLocaleString('fr-FR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
+
+function colorClass(val, seuils) {
+  if (val == null) return 'c-nd';
+  if (!seuils)     return 'c-ok';
+  const { cr, ar, a, v } = seuils;
+  if (cr != null && val <= cr) return 'c-cr';
+  if (ar != null && val <= ar) return 'c-ar';
+  if (a  != null && val <= a)  return 'c-a';
+  if (v  != null && val <= v)  return 'c-v';
+  return 'c-ok';
+}
+
+// ---------- Sécheresse : arrêté en vigueur (dernier arrêté dont la date n'est pas dans le futur) ----------
+async function loadSecheresseInfo() {
+  try {
+    const [arretesTbl, suiviTbl, zonesTbl] = await Promise.all([
+      grist.docApi.fetchTable('Arretes_documents'),
+      grist.docApi.fetchTable('Suivi_AP_secheresse'),
+      grist.docApi.fetchTable('Zones_alerte_secheresse'),
+    ]);
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const arretesRows = (arretesTbl.id || []).map((id, i) => ({ id, date: arretesTbl.Date[i] }));
+    // On ignore tout arrêté dont la date est dans le futur : on ne veut que le dernier déjà en vigueur.
+    const pastArretes = arretesRows.filter(a => a.date != null && a.date <= nowSec);
+    currentArrete = pastArretes.sort((a, b) => b.date - a.date)[0] || null;
+
+    niveauByZone = new Map();
+    if (currentArrete) {
+      const ids = suiviTbl.id || [];
+      for (let i = 0; i < ids.length; i++) {
+        if (suiviTbl.Date_AP[i] === currentArrete.id) {
+          niveauByZone.set(suiviTbl.secteur[i], suiviTbl.niveau_restriction[i] || 'So');
+        }
+      }
+    }
+
+    zoneNameById = new Map();
+    (zonesTbl.id || []).forEach((id, i) => {
+      zoneNameById.set(id, (zonesTbl.Nom_simple && zonesTbl.Nom_simple[i]) || (zonesTbl.Nom_complet && zonesTbl.Nom_complet[i]) || id);
+    });
+  } catch (e) {
+    // Tables sécheresse absentes ou inaccessibles : le tableau de bord débits continue de fonctionner sans ce bandeau.
+    console.warn('Info sécheresse indisponible :', e.message);
+    currentArrete = null; niveauByZone = new Map(); zoneNameById = new Map();
+  }
+}
+
+function initHeaderLinks() {
+  const linkAP = document.getElementById('link-suivi-ap');
+  if (SUIVI_AP_URL) {
+    linkAP.href = SUIVI_AP_URL;
+    linkAP.style.display = 'inline-block';
+  }
+}
+
+// Filtre stations — chips
+function buildChips(codes, stMap) {
+  const container = document.getElementById('st-filter-list');
+  container.innerHTML = '';
+  codes.forEach(code => {
+    const st  = stMap.get(code);
+    const nom = st?.nom || code;
+    const cours = st?.cours || '';
+    const chip = document.createElement('span');
+    chip.className = 'st-chip' + (stationFilter.size === 0 || stationFilter.has(code) ? '' : ' off');
+    chip.dataset.code = code;
+    chip.title = `${nom} (${cours})`;
+    chip.textContent = `${nom} (${cours})`;
+    chip.addEventListener('click', () => {
+      if (stationFilter.size === 0) {
+        codes.forEach(c => stationFilter.add(c));
+      }
+      if (stationFilter.has(code)) stationFilter.delete(code);
+      else stationFilter.add(code);
+      chip.classList.toggle('off', !stationFilter.has(code));
+      render();
+    });
+    container.appendChild(chip);
+  });
+}
+
+document.getElementById('chip-all').addEventListener('click', () => {
+  stationFilter.clear();
+  document.querySelectorAll('.st-chip').forEach(c => c.classList.remove('off'));
+  render();
+});
+
+document.getElementById('chip-none').addEventListener('click', () => {
+  document.querySelectorAll('.st-chip').forEach(chip => {
+    stationFilter.add(chip.dataset.code);
+    chip.classList.add('off');
+  });
+  stationFilter.clear();
+  stationFilter.add('__none__');
+  render();
+});
+
+// Toolbar dates
+document.getElementById('btn-apply').addEventListener('click', () => {
+  dateRange.start = document.getElementById('d1').value || null;
+  dateRange.end   = document.getElementById('d2').value || null;
+  render();
+});
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+  dateRange = { start: null, end: null };
+  document.getElementById('d1').value = '';
+  document.getElementById('d2').value = '';
+  render();
+});
+
+document.getElementById('btn-last15').addEventListener('click', () => {
+  applyLastDaysRange();
+  render();
+});
+
+document.getElementById('btn-export-print').addEventListener('click', () => window.print());
+
+// Export XLSX
+document.getElementById('btn-export-xlsx').addEventListener('click', () => {
+  const tbl = document.getElementById('tbl');
+  if (!tbl || tbl.style.display === 'none') return;
+
+  const rows = [];
+  const headers = [];
+  const theadRows = tbl.querySelectorAll('thead tr');
+  theadRows.forEach((tr, rowIndex) => {
+    const rowHeaders = [];
+    tr.querySelectorAll('th').forEach(th => {
+      rowHeaders.push(th.textContent.trim());
+    });
+    headers.push(rowHeaders);
+  });
+
+  const mergedHeaders = [];
+  const maxCols = headers[0].length;
+  for (let col = 0; col < maxCols; col++) {
+    const colHeaders = [];
+    headers.forEach(row => {
+      if (row[col]) colHeaders.push(row[col]);
+    });
+    mergedHeaders.push(colHeaders.join(' - '));
+  }
+
+  const seuilRows = tbl.querySelectorAll('tbody tr.seuil-row');
+  seuilRows.forEach(tr => {
+    const rowData = [];
+    tr.querySelectorAll('td').forEach(td => {
+      rowData.push(td.textContent.trim());
+    });
+    rows.push(rowData);
+  });
+
+  const dataRows = tbl.querySelectorAll('tbody tr:not(.seuil-row)');
+  dataRows.forEach(tr => {
+    const rowData = [];
+    tr.querySelectorAll('td').forEach(td => {
+      rowData.push(td.textContent.trim());
+    });
+    rows.push(rowData);
+  });
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([mergedHeaders, ...rows]);
+  XLSX.utils.book_append_sheet(wb, ws, "Débits journaliers");
+
+  const metadataRows = [
+    ["Station", "Secteur", "Cours d'eau", "Vigilance (m³/s)", "Alerte (m³/s)", "Alerte renforcée (m³/s)", "Crise (m³/s)"]
+  ];
+  allStations.forEach(st => {
+    if (st.Code_hydro) {
+      metadataRows.push([
+        st.Nom_usuel || st.Libelle_site || st.Code_hydro,
+        st.Secteur || '—',
+        st.Cours_d_eau || '—',
+        st.Vigilance !== null && st.Vigilance !== undefined ? st.Vigilance.toFixed(3) : '—',
+        st.Alerte !== null && st.Alerte !== undefined ? st.Alerte.toFixed(3) : '—',
+        st.Alerte_renforcee !== null && st.Alerte_renforcee !== undefined ? st.Alerte_renforcee.toFixed(3) : '—',
+        st.Crise !== null && st.Crise !== undefined ? st.Crise.toFixed(3) : '—'
+      ]);
+    }
+  });
+  const metadataWS = XLSX.utils.aoa_to_sheet(metadataRows);
+  XLSX.utils.book_append_sheet(wb, metadataWS, "Seuils");
+
+  XLSX.writeFile(wb, `debits_journaliers_${new Date().toISOString().slice(0, 10)}.xlsx`);
+});
+
+// Export image
+document.getElementById('btn-export-image').addEventListener('click', () => {
+  const tbl = document.getElementById('tbl');
+  if (!tbl || tbl.style.display === 'none') return;
+
+  const header = document.querySelector('header');
+  const toolbar = document.getElementById('toolbar');
+  const filterBar = document.getElementById('filter-bar');
+  const legende = document.getElementById('legende');
+  const originalDisplay = {
+    header: header.style.display,
+    toolbar: toolbar.style.display,
+    filterBar: filterBar.style.display,
+    legende: legende.style.display
+  };
+
+  header.style.display = 'none';
+  toolbar.style.display = 'none';
+  filterBar.style.display = 'none';
+  legende.style.display = 'none';
+
+  html2canvas(tbl, {
+    scale: 2,
+    logging: false,
+    useCORS: true,
+    allowTaint: true
+  }).then(canvas => {
+    header.style.display = originalDisplay.header;
+    toolbar.style.display = originalDisplay.toolbar;
+    filterBar.style.display = originalDisplay.filterBar;
+    legende.style.display = originalDisplay.legende;
+
+    const link = document.createElement('a');
+    link.download = `tableau_debits_${new Date().toISOString().slice(0, 10)}.png`;
+    link.href = canvas.toDataURL('image/png');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+});
+
+// Export HTML
+document.getElementById('btn-export-copy').addEventListener('click', () => {
+  const tbl = document.getElementById('tbl');
+  if (!tbl || tbl.style.display === 'none') return;
+
+  const clone = tbl.cloneNode(true);
+  const colorMap = {
+    'c-ok': '#ffffff', 'c-v': '#FFF9C4', 'c-a': '#FFE082',
+    'c-ar': '#FFA726', 'c-cr': '#EF5350', 'c-nd': '#eeeeee'
+  };
+  const textMap = { 'c-cr': 'white' };
+
+  const FS_HEADER_SECTEUR = '20px';
+  const FS_HEADER_COURS   = '15px';
+  const FS_HEADER_NOM     = '17px';
+  const FS_HEADER_CODE    = '13px';
+  const FS_SEUIL          = '17px';
+  const FS_DATA           = '18px';
+  const PAD_CELL          = '10px 16px';
+
+  clone.querySelectorAll('td, th').forEach(el => {
+    el.style.position = 'static';
+    if (!(el.tagName === 'TD' && el.style.height)) {
+      el.style.padding = PAD_CELL;
+    }
+    for (const [cls, bg] of Object.entries(colorMap)) {
+      if (el.classList.contains(cls)) {
+        el.style.backgroundColor = bg;
+        if (textMap[cls]) el.style.color = textMap[cls];
+      }
+    }
+    if (el.tagName === 'TH') {
+      if (!el.style.backgroundColor) el.style.backgroundColor = '#1565c0';
+      if (!el.style.color) el.style.color = 'white';
+    }
+  });
+
+  const theadRows = clone.querySelectorAll('thead tr');
+  if (theadRows[0]) theadRows[0].querySelectorAll('th').forEach(th => {
+    th.style.fontSize = FS_HEADER_SECTEUR; th.style.fontWeight = '700';
+  });
+  if (theadRows[1]) theadRows[1].querySelectorAll('th').forEach(th => {
+    th.style.fontSize = FS_HEADER_COURS; th.style.fontWeight = '400';
+  });
+  if (theadRows[2]) theadRows[2].querySelectorAll('th').forEach(th => {
+    th.style.fontSize = FS_HEADER_NOM; th.style.fontWeight = '700';
+  });
+
+  clone.querySelectorAll('tbody tr.seuil-row td').forEach(td => {
+    td.style.fontSize = FS_SEUIL; td.style.fontWeight = '700';
+  });
+  clone.querySelectorAll('tbody tr:not(.seuil-row) td').forEach(td => {
+    if (!td.style.height) td.style.fontSize = FS_DATA;
+  });
+
+  clone.querySelectorAll('a').forEach(a => {
+    const span = document.createElement('span');
+    span.textContent = a.textContent;
+    span.style.fontSize = FS_HEADER_CODE;
+    span.style.opacity = '0.85';
+    a.replaceWith(span);
+  });
+
+  const html = `<table border="1" style="border-collapse:collapse;font-family:Marianne;font-size:${FS_DATA}">${clone.innerHTML}</table>`;
+  const blob = new Blob([html], { type: 'text/html' });
+
+  if (navigator.clipboard && window.ClipboardItem) {
+    navigator.clipboard.write([new ClipboardItem({ 'text/html': blob })])
+      .then(() => {
+        const btn = document.getElementById('btn-export-copy');
+        const orig = btn.textContent;
+        btn.textContent = '✅ Copié !';
+        btn.style.background = '#2e7d32';
+        setTimeout(() => { btn.textContent = orig; btn.style.background = ''; }, 2000);
+      })
+      .catch(() => fallbackCopy(html));
+  } else {
+    fallbackCopy(html);
+  }
+});
+
+function fallbackCopy(html) {
+  const div = document.createElement('div');
+  div.contentEditable = true;
+  div.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+  div.innerHTML = html;
+  document.body.appendChild(div);
+  const sel = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(div);
+  sel.removeAllRanges();
+  sel.addRange(range);
+  document.execCommand('copy');
+  sel.removeAllRanges();
+  document.body.removeChild(div);
+  const btn = document.getElementById('btn-export-copy');
+  const orig = btn.textContent;
+  btn.textContent = '✅ Copié (fallback)';
+  setTimeout(() => { btn.textContent = orig; }, 2000);
+}
+
+// Rendu principal
+function render() {
+  if (!allSuivi.length) {
+    document.getElementById('msg').textContent =
+      allStations.length ? 'Aucune donnée dans Suivi_hydro' : 'Chargement…';
+    document.getElementById('tbl').style.display = 'none';
+    document.getElementById('msg').style.display = 'block';
+    return;
+  }
+
+  if (!defaultRangeSet) {
+    if (dateRange.start == null && dateRange.end == null) {
+      applyLastDaysRange();
+    }
+    defaultRangeSet = true;
+  }
+
+  const stMap = new Map();
+  allStations.forEach(s => {
+    if (!s.Code_hydro) return;
+    stMap.set(s.Code_hydro, {
+      nom:     s.Nom_usuel || s.Libelle_site || s.Code_hydro,
+      cours:   s.Cours_d_eau || '',
+      secteur: s.Secteur     || '—',
+      lien:    s.Lien        || `https://hydro.eaufrance.fr/sitehydro/${s.Code_hydro}/fiche`,
+      zoneId:  s.zone_alerte_secheresse || null,
+      seuils: {
+        v:  s.Vigilance,
+        a:  s.Alerte,
+        ar: s.Alerte_renforcee,
+        cr: s.Crise,
+      }
+    });
+  });
+
+  const pivotMap = new Map();
+  const dateSet  = new Set();
+
+  allSuivi.forEach(r => {
+    const iso = tsToISO(r.dat_obs_elab);
+    if (!iso) return;
+    if (dateRange.start && iso < dateRange.start) return;
+    if (dateRange.end   && iso > dateRange.end)   return;
+    dateSet.add(iso);
+    if (!pivotMap.has(iso)) pivotMap.set(iso, new Map());
+    pivotMap.get(iso).set(r.code_site, lsToM3s(r.resultat_obs_elab));
+  });
+
+  const dates = [...dateSet].sort((a,b) => b.localeCompare(a));
+  const codesPresents = new Set(allSuivi.map(r => r.code_site).filter(Boolean));
+
+  const secteurs = new Map();
+  allStations.forEach(s => {
+    if (!s.Code_hydro || !codesPresents.has(s.Code_hydro)) return;
+    const sec = s.Secteur || '—';
+
+    if (sec === 'Axe Aude réalimenté') {
+      const nomStation = s.Nom_usuel || s.Libelle_site || '';
+      const index = AXE_AUDE_ORDER.indexOf(nomStation);
+      if (!secteurs.has(sec)) secteurs.set(sec, []);
+      if (index !== -1) {
+        secteurs.get(sec).splice(index, 0, s.Code_hydro);
+      } else {
+        secteurs.get(sec).push(s.Code_hydro);
+      }
+    } else {
+      if (!secteurs.has(sec)) secteurs.set(sec, []);
+      secteurs.get(sec).push(s.Code_hydro);
+    }
+  });
+
+  secteurs.forEach((codes, sec) => {
+    if (sec !== 'Axe Aude réalimenté') {
+      codes.sort((a, b) => {
+        const aNom = stMap.get(a)?.nom || a;
+        const bNom = stMap.get(b)?.nom || b;
+        return aNom.localeCompare(bNom);
+      });
+    }
+  });
+
+  codesPresents.forEach(c => {
+    if (!stMap.has(c)) {
+      if (!secteurs.has('Autres')) secteurs.set('Autres', []);
+      if (![...secteurs.get('Autres')].includes(c)) secteurs.get('Autres').push(c);
+    }
+  });
+
+  const allCodes = [...secteurs.values()].flat();
+
+  if (document.getElementById('st-filter-list').children.length === 0) {
+    buildChips(allCodes, stMap);
+  }
+
+  const visibleCodes = stationFilter.size === 0
+    ? allCodes
+    : stationFilter.has('__none__')
+      ? []
+      : allCodes.filter(c => stationFilter.has(c));
+
+  if (visibleCodes.length === 0) {
+    document.getElementById('msg').textContent = 'Aucune station sélectionnée';
+    document.getElementById('tbl').style.display = 'none';
+    document.getElementById('msg').style.display = 'block';
+    return;
+  }
+
+  const secteursFiltrés = new Map();
+  secteurs.forEach((codes, sec) => {
+    const vis = codes.filter(c => visibleCodes.includes(c));
+    if (vis.length) secteursFiltrés.set(sec, vis);
+  });
+
+  // THEAD
+  const thead = document.getElementById('thead');
+  thead.innerHTML = '';
+
+  const tr1 = document.createElement('tr');
+  const thCorner1 = document.createElement('th');
+  thCorner1.className = 'col-date';
+  thCorner1.textContent = 'Secteur';
+  tr1.appendChild(thCorner1);
+  secteursFiltrés.forEach((codes, sec) => {
+    const th = document.createElement('th');
+    th.colSpan = codes.length;
+    th.textContent = sec;
+    th.style.borderLeft = '2px solid rgba(255,255,255,.4)';
+    tr1.appendChild(th);
+  });
+  thead.appendChild(tr1);
+
+  const tr2 = document.createElement('tr');
+  const thCorner2 = document.createElement('th');
+  thCorner2.className = 'col-date';
+  thCorner2.textContent = "Cours d'eau";
+  tr2.appendChild(thCorner2);
+  visibleCodes.forEach(code => {
+    const th = document.createElement('th');
+    th.textContent = stMap.get(code)?.cours || '';
+    tr2.appendChild(th);
+  });
+  thead.appendChild(tr2);
+
+  const tr3 = document.createElement('tr');
+  const thCorner3 = document.createElement('th');
+  thCorner3.className = 'col-date';
+  thCorner3.innerHTML = `Station<div style="font-size:8px; font-weight:400; opacity:.85; margin-top:2px;">(niveau + lien Hub'Eau)</div>`;
+  tr3.appendChild(thCorner3);
+  visibleCodes.forEach(code => {
+    const st  = stMap.get(code);
+    const nom = st?.nom || code;
+    const url = st?.lien || `https://hydro.eaufrance.fr/sitehydro/${code}/fiche`;
+    const th  = document.createElement('th');
+    const niveauCode = st?.zoneId ? niveauByZone.get(st.zoneId) : null;
+    const nStyle = niveauStyle(niveauCode);
+    th.style.background = nStyle.color;
+    th.style.color = nStyle.text;
+    th.title = st?.zoneId
+      ? `${zoneNameById.get(st.zoneId) || 'Zone'} : ${nStyle.label}` + (currentArrete ? ` (arrêté du ${fmtDateFR(currentArrete.date)})` : '')
+      : 'Aucune zone sécheresse liée';
+    const graphUrl = STATION_GRAPH_URL_TEMPLATE || null;
+    const graphLink = graphUrl
+      ? ` · <a class="th-link" style="color:${nStyle.text}" href="${graphUrl}" target="_blank" onclick="setGraphStationCode('${code}')" title="Graphique de la station">📈</a>`
+      : '';
+    th.innerHTML = `${nom}<br>
+      <a class="th-link" style="color:${nStyle.text}" href="${url}" target="_blank" title="Fiche station Hub'Eau">${code} ↗</a>${graphLink}`;
+    tr3.appendChild(th);
+  });
+  thead.appendChild(tr3);
+
+  // TBODY
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = '';
+
+  [
+    { cls:'seuil-v',  label:'Seuil Vigilance',        key:'v'  },
+    { cls:'seuil-a',  label:'Seuil Alerte',            key:'a'  },
+    { cls:'seuil-ar', label:'Seuil Alerte Renforcée',  key:'ar' },
+    { cls:'seuil-cr', label:'Seuil Crise',             key:'cr' },
+  ].forEach(({ cls, label, key }) => {
+    const tr = document.createElement('tr');
+    tr.className = 'seuil-row ' + cls;
+    const tdL = document.createElement('td');
+    tdL.className = 'col-date';
+    tdL.textContent = label;
+    tr.appendChild(tdL);
+    visibleCodes.forEach(code => {
+      const td = document.createElement('td');
+      const s  = stMap.get(code)?.seuils;
+      const val = s?.[key];
+      td.textContent = val != null ? fmtM3s(val) : '—';
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+
+  const trSep = document.createElement('tr');
+  const tdSep = document.createElement('td');
+  tdSep.colSpan = visibleCodes.length + 1;
+  tdSep.style.cssText = 'height:4px;background:#90a4ae;padding:0';
+  trSep.appendChild(tdSep);
+  tbody.appendChild(trSep);
+
+  dates.forEach(iso => {
+    const row = pivotMap.get(iso) || new Map();
+    const tr  = document.createElement('tr');
+    const tdD = document.createElement('td');
+    tdD.className = 'col-date';
+    tdD.textContent = fmtDate(iso);
+    tr.appendChild(tdD);
+    visibleCodes.forEach(code => {
+      const val = row.has(code) ? row.get(code) : null;
+      const td  = document.createElement('td');
+      td.className = colorClass(val, stMap.get(code)?.seuils);
+      td.textContent = val != null ? fmtM3s(val) : '—';
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('msg').style.display = 'none';
+  document.getElementById('tbl').style.display = '';
+  requestAnimationFrame(fixStickyHeaders);
+
+  document.getElementById('d1').value = dateRange.start || '';
+  document.getElementById('d2').value = dateRange.end   || '';
+}
+
+function lsToM3s(v) {
+  if (v == null) return null;
+  const n = parseFloat(v);
+  return isNaN(n) ? null : n / 1000;
+}
+
+// Rafraîchissement manuel et automatique des données
+function refreshData() {
+  const btn = document.getElementById('btn-refresh');
+  const badge = document.getElementById('badge');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Rafraîchissement…'; }
+
+  Promise.all([
+    grist.docApi.fetchTable('Suivi_hydro'),
+    grist.docApi.fetchTable('lst_stations_secheresse')
+      .catch(() => grist.docApi.fetchTable('Lst_stations_secheresse')),
+    loadSecheresseInfo(),
+  ])
+    .then(([suiviTbl, stationsTbl]) => {
+      allSuivi = filterRetenue(tableToRows(suiviTbl));
+      allStations = tableToRows(stationsTbl);
+      loadedSuivi = true;
+      loadedStations = true;
+      render();
+      if (badge) {
+        badge.textContent = 'Connecté';
+        badge.style.background = 'rgba(165,214,167,.35)';
+      }
+    })
+    .catch(e => {
+      document.getElementById('msg').textContent = 'Erreur de rafraîchissement : ' + e.message;
+    })
+    .finally(() => {
+      if (btn) { btn.disabled = false; btn.textContent = '🔄 Rafraîchir'; }
+    });
+}
+
+document.getElementById('btn-refresh').addEventListener('click', refreshData);
+
+// Grist init
+grist.ready({ requiredAccess: 'read table' });
+
+function tryRender() {
+  if (loadedSuivi && loadedStations) render();
+}
+
+(function tryInit(n) {
+  if (!grist.docApi) {
+    if (n > 0) { setTimeout(() => tryInit(n-1), 400); return; }
+    document.getElementById('msg').textContent = 'Grist non disponible';
+    return;
+  }
+  document.getElementById('badge').textContent = 'Connecté';
+  document.getElementById('badge').style.background = 'rgba(165,214,167,.35)';
+  initHeaderLinks();
+
+  loadSecheresseInfo().then(() => tryRender());
+
+  grist.docApi.fetchTable('Suivi_hydro')
+    .then(tbl => {
+      allSuivi = filterRetenue(tableToRows(tbl));
+      loadedSuivi = true;
+      document.getElementById('msg').textContent = `${allSuivi.length} obs. chargées…`;
+      tryRender();
+    })
+    .catch(e => {
+      document.getElementById('msg').textContent = 'Erreur Suivi_hydro : ' + e.message;
+    });
+
+  const tryStations = name =>
+    grist.docApi.fetchTable(name)
+      .then(tbl => { allStations = tableToRows(tbl); loadedStations = true; tryRender(); });
+
+  tryStations('lst_stations_secheresse')
+    .catch(() => tryStations('Lst_stations_secheresse'))
+    .catch(e => {
+      allStations = []; loadedStations = true;
+      document.getElementById('msg').textContent += ' | stations: ' + e.message;
+      tryRender();
+    });
+
+  setInterval(refreshData, 60000);
+})(15);
+
+function fixStickyHeaders() {
+  const rows = document.querySelectorAll('#thead tr');
+  let top = 0;
+  rows.forEach(row => {
+    row.querySelectorAll('th').forEach(th => {
+      th.style.top = top + 'px';
+    });
+    top += row.offsetHeight;
+  });
+}
+
+function tableToRows(tbl) {
+  if (!tbl || !tbl.id) return [];
+  const keys = Object.keys(tbl).filter(k => k !== 'id');
+  return tbl.id.map((id, i) => {
+    const row = { id };
+    keys.forEach(k => row[k] = tbl[k][i]);
+    return row;
+  });
+}
+
+// Ne garder que la meilleure ligne disponible par site+grandeur+date
+// (colonne formule Est_retenue calculée dans Grist)
+function filterRetenue(rows) {
+  return rows.filter(r => r.Est_retenue === true);
+}
+</script>
+</body>
+</html>
