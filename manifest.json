@@ -1,0 +1,13 @@
+[
+  {
+    "widgetId": "koala-butte-culture",
+    "name": "Suivi butte de culture",
+    "url": "https://matgn34.github.io/koala-grist-widgets/butte-culture/index.html",
+    "accessLevel": "full",
+    "renderAfterReady": false,
+    "published": true,
+    "description": "Suivi de culture en butte (permaculture) : schéma de la butte et du jardin, semis/plantation/récolte, calendrier, journal avec photos, rappels. Tables créées automatiquement.",
+    "authors": [{ "name": "Matgn34", "url": "https://github.com/Matgn34" }],
+    "isGristLabsMaintained": false
+  }
+]
