@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<!-- Suivi butte de culture - widget Grist - v1.0.0 - licence MIT - https://github.com/Matgn34/koala-grist-widgets -->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Suivi butte</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.35 system-ui,sans-serif;color:#2b2b2b;background:#faf8f3}
+header{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 10px;background:#4a6b3a;color:#fff}
+header h1{font-size:16px;margin:0 10px 0 0}
+.tab{background:transparent;border:1px solid #ffffff80;color:#fff;border-radius:16px;padding:4px 12px;cursor:pointer}
+.tab.on{background:#fff;color:#4a6b3a;font-weight:600}
+main{padding:10px;max-width:1100px;margin:auto}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0}
+.row.sp{justify-content:space-between}
+button{font:inherit;border:1px solid #b9b19c;background:#fff;border-radius:6px;padding:4px 10px;cursor:pointer}
+button.pri{background:#4a6b3a;color:#fff;border-color:#4a6b3a}
+button.dan{color:#b3261e;border-color:#e0a8a4}
+button.on{background:#e6efd9;border-color:#4a6b3a}
+input,select{font:inherit;padding:4px 6px;border:1px solid #b9b19c;border-radius:6px;background:#fff;max-width:100%}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:10px}
+@media(max-width:800px){.grid{grid-template-columns:1fr}}
+.card{background:#fff;border:1px solid #e3ddcc;border-radius:8px;padding:8px}
+svg{width:100%;height:auto;display:block;background:#fdfcf8;border-radius:6px}
+svg.edit{touch-action:none}
+.slot,.obj{cursor:pointer}
+label{display:block;margin:6px 0 2px;font-size:12px;color:#666}
+label+input,label+select{width:100%}
+.chip{display:inline-block;padding:1px 8px;border-radius:10px;margin:2px;font-size:12px;background:#eee}
+.S{background:#fff3c4}.P{background:#cfeccf}.R{background:#ffd9b0}
+table{border-collapse:collapse;width:100%}
+th,td{border:1px solid #e3ddcc;padding:2px 4px;text-align:center;font-size:12px}
+td.l,th.l{text-align:left}
+td.cur,th.cur{outline:2px solid #1976d2;outline-offset:-2px}
+.hist{font-size:12px;border-top:1px solid #eee;padding:4px 0}
+.thumbs img{height:60px;border-radius:4px;margin:2px;cursor:zoom-in}
+.warn{background:#fff3c4;border:1px solid #e6cf7a;border-radius:6px;padding:6px;margin:6px 0}
+.err{background:#fde7e5;border:1px solid #e0a8a4;border-radius:6px;padding:6px;margin:6px 0}
+small{color:#777}
+.leg span{display:inline-block;margin-right:10px;font-size:12px}
+.leg i{display:inline-block;width:11px;height:11px;border-radius:50%;vertical-align:-1px;margin-right:3px;border:1px solid #888}
+svg.ic{display:inline-block;width:1.15em;height:1.15em;vertical-align:-.2em;background:none}
+.emo button{font-size:16px;padding:1px 5px;margin:1px}
+.mchk{display:inline-flex;align-items:center;gap:1px;margin-right:6px;font-size:12px;color:#2b2b2b;margin-top:0}
+.mchk input{width:auto}
+a.btn{display:inline-block;border:1px solid #b9b19c;background:#fff;border-radius:6px;padding:2px 8px;text-decoration:none;color:#2b2b2b;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🌱 Suivi butte</h1>
+  <button class="tab" data-tab="butte">Butte</button>
+  <button class="tab" data-tab="jardin">Jardin</button>
+  <button class="tab" data-tab="calendrier">Calendrier</button>
+  <button class="tab" data-tab="journal">Journal</button>
+  <button class="tab" data-tab="rappels">Rappels</button>
+</header>
+<main id="app">Chargement…</main>
+
+<script>
+/* ---------- Données ---------- */
+const TB={plantes:'Butte_Plantes',slots:'Butte_Emplacements',suivi:'Butte_Suivi',rappels:'Butte_Rappels',jardin:'Butte_Jardin',config:'Butte_Config'};
+const COLS={
+ plantes:[['Nom','Text'],['Emoji','Text'],['Type','Text'],['Mois_semis','Text'],['Mois_plantation','Text'],['Mois_recolte','Text'],['Qte_4pers','Text'],['Espacement','Text'],['Entre_rangs','Text'],['Notes','Text']],
+ slots:[['Butte','Text'],['Code','Text'],['Libelle','Text'],['Periode','Text'],['Forme','Text'],['X','Numeric'],['Y','Numeric'],['W','Numeric'],['H','Numeric'],['Plan','Text']],
+ suivi:[['Butte','Text'],['Slot','Text'],['Plante','Text'],['Action','Text'],['Date','Text'],['Note','Text'],['Photos','Attachments']],
+ rappels:[['Date','Text'],['Texte','Text'],['Butte','Text'],['Fait','Bool']],
+ jardin:[['Type','Text'],['Nom','Text'],['X','Numeric'],['Y','Numeric'],['W','Numeric'],['H','Numeric'],['Angle','Numeric']],
+ config:[['Cle','Text'],['Valeur','Text']]
+};
+const MOIS=['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Août','Sep','Oct','Nov','Déc'];
+const ORDRE=[9,10,11,12,1,2,3,4,5,6,7,8];
+
+// [Nom, Icône, Type, semis, plantation, récolte, qté 4 pers, espacement plants (cm), entre rangs (cm), notes]
+// Mois : 1=janv … 12=déc. Espacements = valeurs usuelles indicatives (le livre ne les donne pas).
+const PLANTES=[
+// --- Butte du livre ---
+["Fève","svg:feve","Semis","10,11","","4,5","5 m, soit 20 poquets","20","40","Semis début à mi-octobre, profondeur 2 à 10 cm (février-mars hors Sud). Couper la végétation au fur et à mesure des récoltes et la laisser sur place."],
+["Vesce d'hiver","🌱","Semis","10","","","","","","À la volée sous la couverture, après trempage d'une nuit. À arracher en début de printemps avant semis et plantations."],
+["Luzerne","🌿","Semis","5","","","","","","Mi-mai, dans les allées et sur la butte (petit rectangle de 2 x 5 cm). Pousse très lentement la 1re année."],
+["Ail","🧄","Plantation","","10,2,3","4,7","10 m, soit 50 cayeux","10","25","Plantation en octobre (ou février-mars). Frais en avril, sec en juillet."],
+["Échalote rose ou grise","🧅","Plantation","","10,2,3","7","10 m, soit 70 cayeux","15","25","Plantation en octobre (ou février-mars)."],
+["Oignon blanc (bulbille)","🧅","Plantation","","10,2,3,4","4,7","8 m, soit 80 unités","10","25","Octobre dans le livre, février à avril d'après le tableau (pose en surface des bulbilles, p. 168). Frais en avril, sec en juillet."],
+["Fraise","🍓","Plantation","","8,9,10,2,3","5,6","10 m, soit 50 plants","30","40","Août-septembre ou février-mars."],
+["Rhubarbe","🌿","Division","","9,10,3","","","100","100","Éclat de racine de 3 cm, septembre-octobre (ou mars)."],
+["Romarin","🌿","Bouture","","9,10,3","","","60","80","Tige de 20 cm enfoncée des deux tiers, effeuillée. Septembre-octobre (ou mars)."],
+["Oseille","🌿","Division","","9,10,3","4,5","","30","40","Couper en deux (ou plus) un pied existant."],
+["Radis rose","🌸","Semis","3,4,5,6,7,8,9","","4,5,6,7,8,9,10","2 m, soit 100 unités x 5","3","15","Semer une zone tous les 15 jours pour étaler les récoltes (radis de tous les mois : mars à mi-mai et août à mi-septembre)."],
+["Betterave","🔴","Semis","4,5,6","","9,10,11","5 m, soit 30 unités (primeur)","10","25","Betterave primeur : semis en avril."],
+["Navet 'Marteau'","⚪","Semis","3,4,5","","6,7","4 m, soit 60 unités","10","25","À récolter jeune (6 cm de diamètre maximum)."],
+["Maïs","🌽","Semis","4,5","","9,10","6 unités","40","60","Maïs doux. Semer 3 grains par emplacement, ne garder que 1 à 2 pousses."],
+["Haricot nain","svg:haricot","Semis","5,6,7","","7,8,9,10","voir Haricot vert / sec","40","50","4 cm de profondeur, par poquets de 6 graines."],
+["Haricot à rame","svg:haricot-vert","Semis","5,6","","7,8,9,10","","40","80","Sillon de 4 cm de profondeur, au pied du grillage."],
+["Chou d'hiver","🥬","Plantation","","5","9,10,11","","50","60",""],
+["Céleri (rave ou branche)","🥬","Plantation","","4,5","9,10","rave 12 plants · branche 10 plants","40","50",""],
+["Salade S1","🥬","Plantation","","5","6,7","5 m, soit 20 plants x 5","25","30","Plantation en mai."],
+["Salade S2","🥬","Plantation","","6","7,8,9,10","","25","30","Plantation en juin."],
+["Salade S3","🥬","Plantation","","7","8,9,10","","25","30","Plantation en juillet."],
+["Blette","🥬","Plantation","4,6","5","7,8,9,10","6 plants x 2","30","40","Plusieurs coupes possibles par an. Semis en avril et juin."],
+["Souci","🌼","Plantation","","5","","","25","30","Désherbage de printemps : en enlever si trop présents."],
+["Œillet d'Inde","🏵️","Plantation","","5","","","20","25",""],
+["Tomate","🍅","Plantation","2,3","5","7,8,9,10","12 plants","50","70","Sur le sommet, à l'emplacement des planchettes (rotation chaque année)."],
+// --- Tableau « Planification du potager » (4 personnes) ---
+["Artichaut","🌿","Plantation","","3,4,10,2","5,6","5 plants","80","100","Octobre ou février-mars (ou mars-avril)."],
+["Aubergine","🍆","Plantation","2,3","5","7,8,9","5 plants","50","60","Semis en terrine, un sachet pour 2, 4 ou 6 personnes."],
+["Basilic","🌿","Plantation","4,5,6","5,6,7","6,7,8,9","3 plants x 2","20","25","Deux semis à 4 semaines d'intervalle, au chaud."],
+["Betterave de conservation","🔴","Semis","6,7","","10,11","8 m, soit 65 unités","10","30","Un sachet pour deux, deux sachets au-delà."],
+["Carotte de conservation","🥕","Semis","6,7","","10,11,12","30 m, soit 300 unités","5","25","Juin à mi-juillet."],
+["Carotte primeur","🥕","Semis","1,2,3","","5,6","5 m, soit 125 unités","5","20","Mi-janvier à mars, sous abri jusqu'à début mars."],
+["Cassis","🍇","Plantation","","11,12,1,2,3","6,7","3 pieds","120","150","De novembre à mars."],
+["Céleri-rave","🥬","Plantation","3","4,5","10,11","12 plants","40","50",""],
+["Céleri branche","🥬","Plantation","3","4,5","8,9,10","10 plants","30","40",""],
+["Chicorée","🥬","Plantation","4,5,6,7,8","5,6,7,8,9","8,9,10,11","10 m, soit 35 plants","30","30","Un sachet pour deux, deux sachets au-delà."],
+["Chou brocoli","🥦","Plantation","3,4,5","4,5,6,7","7,8,9,10","6 plants","50","60",""],
+["Chou de Bruxelles","🥬","Plantation","5","7","11,12,1,2","10 plants","60","70",""],
+["Chou frisé et de Milan","🥬","Plantation","5","7","10,11,12,1","12 plants","50","60",""],
+["Chou feuille","🥬","Plantation","5","7","10,11,12,1,2","12 plants","50","60",""],
+["Chou-fleur","🥦","Plantation","3,4,5","4,5,6,7","7,8,9,10","6 plants","50","60",""],
+["Chou primeur","🥬","Plantation","8","9","3,4,5","6 plants","40","50",""],
+["Chou chinois","🥬","Plantation","4,5,6,7","5,6,7,8","7,8,9,10,11","5 m, soit 20 plants","30","40",""],
+["Chou-rave","🥬","Plantation","4,5,6,7","5,6,7,8","6,7,8,9,10","5 m, soit 20 plants","25","30",""],
+["Concombre","🥒","Plantation","4,5,6,7","5,6,7","7,8,9","3 plants x 3","50","100","Trois semis à 3 semaines d'intervalle."],
+["Cornichon","🥒","Plantation","5","5","7,8,9","5 plants","40","80","Reprise parfois difficile."],
+["Courge","🎃","Plantation","5","5","9,10","10 plants","100","150","Reprise parfois difficile."],
+["Courgette","🥒","Plantation","4,5,6,7","5,6,7","6,7,8,9,10","3 plants x 3","80","100","Trois semis à 3 semaines d'intervalle. Reprise parfois difficile."],
+["Endive","🥬","Plantation","5","6","11,12,1","10 m, soit 60 unités","10","30",""],
+["Épinard d'automne","🥬","Semis","8","","10,11","5 m, soit 50 unités","10","25","Un poquet de 4 graines tous les 10 cm."],
+["Épinard d'hiver","🥬","Semis","9","","11,12,1,2,3","5 m, soit 50 unités","10","25","Un poquet de 4 graines tous les 10 cm."],
+["Framboisier","🍒","Plantation","","10,11","6,7,9,10","6 m, soit 24 pieds","50","150","Octobre-novembre."],
+["Groseillier","🍒","Plantation","","11,12,1,2","6,7","4 pieds","120","150","Novembre-février."],
+["Haricot sec","svg:haricot","Semis","5,6","","9,10","6 m, soit 15 poquets","50","50","Un poquet de 7 graines tous les 50 cm."],
+["Haricot demi-sec","svg:haricot","Semis","5,6,7","","8,9,10","6 m, soit 15 poquets","50","50","Même quantité que haricot sec."],
+["Haricot vert","svg:haricot-vert","Semis","5,6,7,8","","7,8,9,10","5 m, soit 40 poquets x 3","40","50","Trois semis à 3 semaines d'intervalle."],
+["Laitues primeur et hiver","🥬","Plantation","3,4,5,6,7,8,9","4,5,6,7,8,9,10","5,6,7,8,9,10,11,12","5 m, soit 20 plants x 5","25","30","Cinq semis à 3 semaines d'intervalle."],
+["Mâche d'automne","🥬","Semis","8","","10,11,12","5 m, soit 250 unités","10","15",""],
+["Mâche d'hiver","🥬","Semis","9","","12,1,2,3","10 m, soit 500 unités","10","15",""],
+["Melon","🍈","Plantation","4,5","5,6","7,8,9","2 plants","80","150","Semis au chaud."],
+["Navet primeur","⚪","Semis","3,4","","5,6","4 m, soit 60 unités","10","25","En ligne, environ 20 graines par mètre."],
+["Navet de conservation","⚪","Semis","8","","11,12,1","8 m, soit 96 unités","15","30","En ligne. Quantité obtenue après éclaircissage."],
+["Oignon de semis","🧅","Plantation","2,3","4,5","7,8","8 m, soit 80 unités","10","25","À repiquer."],
+["Oignon primeur","🧅","Plantation","8,9","10,11","4,5,6","4 m, soit 40 plants","8","20","À repiquer."],
+["Panais","🥕","Semis","4,5","","10,11,12,1,2","8 m, soit 64 unités","10","40",""],
+["Persil plat ou frisé","🌿","Semis","3,4,5,6,7,8","","5,6,7,8,9,10","1 m², soit 100 plants","10","25","Une graine tous les centimètres, éclaircir ensuite."],
+["Persil tubéreux","🌿","Semis","4,5","","10,11,12","8 m, soit 64 unités","10","30",""],
+["Petit pois","svg:pois","Semis","2,3,4,5","","5,6","5 m, soit 20 poquets x 2","25","50","Un poquet de 4 graines tous les 25 cm."],
+["Piment","🌶️","Plantation","2,3","5","7,8,9,10","2 plants","40","50","Semis au chaud."],
+["Poivron","🌶️","Plantation","2","5","7,8,9,10","4 plants","40","50",""],
+["Poireau","🌿","Plantation","2,3","4,5,6,7","10,11,12,1,2,3","16 m, soit 128 plants","15","30",""],
+["Pomme de terre primeur","🥔","Plantation","","3,4","6,7","5 m, soit 20 tubercules","30","60",""],
+["Pomme de terre de conservation","🥔","Plantation","","4,5","8,9,10","80 m, soit 180 tubercules","35","70",""],
+["Radis long","🌸","Semis","8","","10,11","6 m, soit 48 unités","10","25",""],
+["Topinambour","🌿","Plantation","","3,4","10,11,12,1,2,3","4 plants","40","80",""]
+];
+const EMOJIS=['svg:feve','svg:haricot','svg:haricot-vert','svg:pois','🌱','🌿','🥬','🥦','🥕','🍅','🍆','🥒','🌽','🧅','🧄','🥔','🌶️','🍓','🍒','🍇','🍈','🎃','🌼','🌸','🍃'];
+const ICONS={
+ 'feve':'<path d="M3 15C6 6 15 3 21 4C20 12 14 20 6 21C4 21 2.5 18 3 15Z" fill="#8fbf6a" stroke="#4d7a35" stroke-width="1.2"/><circle cx="9" cy="14" r="2.1" fill="#d6eeb8"/><circle cx="13.5" cy="10.5" r="2.1" fill="#d6eeb8"/>',
+ 'haricot':'<path d="M5 13C4 8 9 4 14 5C19 6 20 11 16 12C13 12.5 14 16 11 17.5C8 19 5.5 17 5 13Z" fill="#9c3d2e" stroke="#5e2018" stroke-width="1.2"/><path d="M8 8.5C10 6.8 12 6.8 14 7.5" stroke="#d9856f" stroke-width="1.2" fill="none" stroke-linecap="round"/>',
+ 'haricot-vert':'<path d="M3 20C8 19 16 13 21 4C21.5 9 17 17 10 21C7 22 4 21.5 3 20Z" fill="#6fb24a" stroke="#3f7a2a" stroke-width="1.2"/><path d="M21 4L22 2" stroke="#3f7a2a" stroke-width="1.2"/>',
+ 'pois':'<path d="M2.5 12C3 7 21 7 21.5 12C21 17 3 17 2.5 12Z" fill="#8fd46a" stroke="#4a8a2e" stroke-width="1.2"/><circle cx="8" cy="12" r="2.2" fill="#d2f2ae"/><circle cx="12" cy="12" r="2.2" fill="#d2f2ae"/><circle cx="16" cy="12" r="2.2" fill="#d2f2ae"/>'
+};
+const TODO_DEF='https://todoist.com/add?content={texte}&date={date}&description={desc}';
+
+const SEED=[];
+function sl(code,lib,per,forme,x,y,w,h,plan){SEED.push({Code:code,Libelle:lib,Periode:per,Forme:forme,X:x,Y:y,W:w,H:h,Plan:plan});}
+(function(){
+ // Permanents (plantes déjà en place / pérennes)
+ [75,133,193,254].forEach((x,i)=>sl('FR-N'+(i+1),'Fraisier nord '+(i+1),'Tout','rond',x,29,16,16,'Fraise'));
+ [73,131,191,253].forEach((x,i)=>sl('FR-S'+(i+1),'Fraisier sud '+(i+1),'Tout','rond',x,128,16,16,'Fraise'));
+ sl('RO-1','Romarin 1','Tout','rond',25,41,18,18,'Romarin');
+ sl('RO-2','Romarin 2','Tout','rond',25,123,18,18,'Romarin');
+ sl('RH-1','Rhubarbe','Tout','rond',18,80,24,24,'Rhubarbe');
+ [[321,34],[333,57],[333,104],[321,126]].forEach((p,i)=>sl('OS-'+(i+1),'Oseille '+(i+1),'Tout','rond',p[0],p[1],20,20,'Oseille'));
+ // Automne (sept-oct)
+ sl('VE-N','Vesce d\'hiver bande nord','Automne','zone',172,14,245,30,'Vesce d\'hiver');
+ sl('VE-S','Vesce d\'hiver bande sud','Automne','zone',172,146,245,30,'Vesce d\'hiver');
+ [['N',52,'nord'],['C',80,'centre'],['S',108,'sud']].forEach(a=>sl('FE-'+a[0],'Rang de fèves '+a[2],'Automne','ligne',176,a[1],240,9,'Fève'));
+ [46,104,163,222,282].forEach((x,i)=>sl('OG-'+(i+1),'Oignon blanc '+(i+1),'Automne','rond',x,14,20,20,'Oignon blanc (bulbille)'));
+ [44,102,161].forEach((x,i)=>sl('AI-'+(i+1),'Ail '+(i+1),'Automne','rond',x,142,18,22,'Ail'));
+ [221,282].forEach((x,i)=>sl('EC-'+(i+1),'Échalote '+(i+1),'Automne','rond',x,142,20,20,'Échalote rose ou grise'));
+ // Printemps-été (mai-juillet) - positions approximatives
+ sl('TO-1','Tomate 1','Printemps','rond',75,80,26,26,'Tomate');
+ sl('TO-2','Tomate 2','Printemps','rond',163,80,26,26,'Tomate');
+ sl('HR-N','Haricot à rame nord','Printemps','ligne',264,65,64,6,'Haricot à rame');
+ sl('HR-S','Haricot à rame sud','Printemps','ligne',264,95,64,6,'Haricot à rame');
+ [[219,107],[251,107],[283,107],[219,131],[251,131],[283,131]].forEach((p,i)=>sl('HN-'+(i+1),'Haricot nain '+(i+1),'Printemps','rond',p[0],p[1],14,14,'Haricot nain'));
+ [34,62,90].forEach((x,i)=>sl('S2-'+(i+1),'Salade S2 '+(i+1),'Printemps','rond',x,22,16,16,'Salade S2'));
+ [121,150].forEach((x,i)=>sl('S3-'+(i+1),'Salade S3 '+(i+1),'Printemps','rond',x,22,16,16,'Salade S3'));
+ [[122,62],[120,98],[205,50],[205,110]].forEach((p,i)=>sl('S1-'+(i+1),'Salade S1 '+(i+1),'Printemps','rond',p[0],p[1],16,16,'Salade S1'));
+ [193,253,313].forEach((x,i)=>sl('RA-'+(i+1),'Radis rose zone '+(i+1),'Printemps','zone',x,15,58,24,'Radis rose'));
+ sl('NA-1','Navet \'Marteau\'','Printemps','zone',226,42,125,14,'Navet \'Marteau\'');
+ sl('BE-1','Betterave','Printemps','zone',108,48,105,14,'Betterave');
+ [[60,118],[130,118]].forEach((p,i)=>sl('CH-'+(i+1),'Chou d\'hiver '+(i+1),'Printemps','rond',p[0],p[1],20,20,'Chou d\'hiver'));
+ [[60,145],[130,145]].forEach((p,i)=>sl('BL-'+(i+1),'Blette '+(i+1),'Printemps','rond',p[0],p[1],18,18,'Blette'));
+ sl('CE-1','Céleri','Printemps','rond',95,145,18,18,'Céleri (rave ou branche)');
+ [185,215].forEach((x,i)=>sl('MA-'+(i+1),'Maïs '+(i+1),'Printemps','rond',x,150,16,16,'Maïs'));
+ [[96,96],[180,88],[300,80]].forEach((p,i)=>sl('SO-'+(i+1),'Souci '+(i+1),'Printemps','rond',p[0],p[1],14,14,'Souci'));
+ [[94,66],[180,70],[249,80]].forEach((p,i)=>sl('OE-'+(i+1),'Œillet d\'Inde '+(i+1),'Printemps','rond',p[0],p[1],14,14,'Œillet d\'Inde'));
+ [65,125,185,245,305].forEach((x,i)=>sl('LU-'+(i+1),'Luzerne (marque '+(i+1)+')','Printemps','rond',x,172,12,12,'Luzerne'));
+})();
+
+const TYPES_JARDIN={terrain:['Terrain',1200,2000],maison_rdc:['Maison (RDC)',992,1110],butte:['Butte',345,160],arbre:['Arbre',300,300],maison:['Maison',800,500],composteur:['Composteur',100,100],eau:['Point d\'eau',60,60],allee:['Allée',100,400],autre:['Autre',200,200]};
+
+/* ---------- État & utilitaires ---------- */
+function lsGet(k){try{return localStorage.getItem(k);}catch(e){return null;}}
+const S={tab:'butte',saison:autoSaison(),butte:null,sel:null,selG:null,edit:false,vue:'Tout',pe:null,q:'',cotes:lsGet('butte_cotes')!=='0',P:[],SL:[],SU:[],RA:[],JA:[],CF:[],err:'',busy:false};
+function autoSaison(){const m=new Date().getMonth()+1;return (m>=9||m<=2)?'Automne':'Printemps';}
+const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const today=()=>iso(new Date());
+function cycleStart(){const n=new Date();return (n.getMonth()>=8?n.getFullYear():n.getFullYear()-1)+'-09-01';}
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const mois=s=>String(s||'').split(',').map(x=>parseInt(x,10)).filter(x=>x>0);
+const PM=()=>Object.fromEntries(S.P.map(p=>[p.Nom,p]));
+const ico=e=>{e=String(e||'');return e.startsWith('svg:')&&ICONS[e.slice(4)]?`<svg class="ic" viewBox="0 0 24 24">${ICONS[e.slice(4)]}</svg>`:esc(e);};
+const emojiRaw=n=>{const p=PM()[n];return p&&p.Emoji?p.Emoji:'🌱';};
+const emoji=n=>ico(emojiRaw(n));
+function iconNode(e,fs){e=String(e||'');if(e.startsWith('svg:')&&ICONS[e.slice(4)])return `<g transform="scale(${fs/24}) translate(-12 -12)" style="pointer-events:none">${ICONS[e.slice(4)]}</g>`;return `<text text-anchor="middle" dominant-baseline="central" font-size="${fs}" style="pointer-events:none">${esc(e)}</text>`;}
+function todoUrl(r){
+  const tpl=cfg('todoist_url',TODO_DEF);
+  const v={texte:r.Texte||'',date:r.Date||'',desc:'Suivi butte'+(r.Butte?' – '+r.Butte:''),butte:r.Butte||''};
+  return tpl.replace(/\{(\w+)\}/g,(m,k)=>k in v?encodeURIComponent(v[k]):m);
+}
+const cfg=(k,d)=>{const r=S.CF.find(c=>c.Cle===k);return r?r.Valeur:d;};
+const act=a=>grist.docApi.applyUserActions(a);
+async function load(name){
+  const t=await grist.docApi.fetchTable(name);const n=(t.id||[]).length;const rows=[];
+  for(let i=0;i<n;i++){const r={};for(const k in t)r[k]=t[k][i];rows.push(r);}
+  return rows;
+}
+async function reload(){
+  const r=await Promise.all(Object.values(TB).map(load));
+  [S.P,S.SL,S.SU,S.RA,S.JA,S.CF]=r;
+  const buttes=S.JA.filter(o=>o.Type==='butte').map(o=>o.Nom);
+  if(!S.butte||!buttes.includes(S.butte))S.butte=buttes[0]||null;
+}
+function cols(obj,keys){const o={};keys.forEach(k=>o[k]=[]);return o;}
+function bulk(table,rows,keys){
+  const c={};keys.forEach(k=>c[k]=rows.map(r=>r[k]));
+  return ['BulkAddRecord',table,rows.map(()=>null),c];
+}
+const mk=p=>({Nom:p[0],Emoji:p[1],Type:p[2],Mois_semis:p[3],Mois_plantation:p[4],Mois_recolte:p[5],Qte_4pers:p[6],Espacement:p[7],Entre_rangs:p[8],Notes:p[9]});
+async function ensure(){
+  const have=await grist.docApi.listTables();const acts=[];const created=[];
+  for(const k in TB){if(!have.includes(TB[k])){acts.push(['AddTable',TB[k],COLS[k].map(c=>({id:c[0],type:c[1]}))]);created.push(k);}}
+  if(acts.length)await act(acts);
+  const seed=[];
+  if(created.includes('jardin')){
+    seed.push(['AddRecord',TB.jardin,null,{Type:'butte',Nom:'Butte A',X:528,Y:1120,W:345,H:160,Angle:90}]);
+    seed.push(bulk(TB.slots,SEED.map(s=>Object.assign({Butte:'Butte A'},s)),COLS.slots.map(c=>c[0])));
+    seed.push(['AddRecord',TB.config,null,{Cle:'jardin_w',Valeur:'40'}]);
+    seed.push(['AddRecord',TB.config,null,{Cle:'jardin_h',Valeur:'24'}]);
+  }
+  if(seed.length)await act(seed);
+  await migrate();
+}
+async function migrate(){
+  const t=await grist.docApi.fetchTable(TB.plantes);
+  const miss=COLS.plantes.filter(c=>!(c[0] in t)).map(c=>['AddColumn',TB.plantes,c[0],{type:c[1]}]);
+  if(miss.length)await act(miss);
+  const cf=Object.fromEntries((await load(TB.config)).map(r=>[r.Cle,r]));
+  const setCfg=(k,v)=>cf[k]?['UpdateRecord',TB.config,cf[k].id,{Valeur:v}]:['AddRecord',TB.config,null,{Cle:k,Valeur:v}];
+  const acts=[];
+  if(!cf.catalog_v||+cf.catalog_v.Valeur<2){
+    const rows=await load(TB.plantes);const by=Object.fromEntries(rows.map(r=>[r.Nom,r]));const add=[];
+    PLANTES.map(mk).forEach(o=>{
+      const r=by[o.Nom];
+      if(!r){add.push(o);return;}
+      const patch={};
+      ['Qte_4pers','Espacement','Entre_rangs'].forEach(k=>{if(!r[k]&&o[k])patch[k]=o[k];});
+      if(r.Emoji==='🫘'||r.Emoji==='🫛'||!r.Emoji)patch.Emoji=o.Emoji;
+      if(Object.keys(patch).length)acts.push(['UpdateRecord',TB.plantes,r.id,patch]);
+    });
+    if(add.length)acts.push(bulk(TB.plantes,add,COLS.plantes.map(c=>c[0])));
+    acts.push(setCfg('catalog_v','2'));
+  }
+  if(!cf.plan_v||+cf.plan_v.Valeur<2){
+    const ja=await load(TB.jardin);
+    if(!ja.some(o=>o.Type==='maison_rdc')){
+      acts.push(['AddRecord',TB.jardin,null,{Type:'terrain',Nom:'Jardin devant (ouest)',X:200,Y:200,W:1200,H:2000,Angle:0}]);
+      acts.push(['AddRecord',TB.jardin,null,{Type:'maison_rdc',Nom:'Maison (RDC)',X:1400,Y:640,W:992,H:1110,Angle:0}]);
+      acts.push(['AddRecord',TB.jardin,null,{Type:'terrain',Nom:'Jardin derrière (est)',X:2392,Y:200,W:1200,H:2000,Angle:0}]);
+    }
+    if(+((cf.jardin_w||{}).Valeur||15)<40)acts.push(setCfg('jardin_w','40'));
+    if(+((cf.jardin_h||{}).Valeur||10)<24)acts.push(setCfg('jardin_h','24'));
+    acts.push(setCfg('plan_v','2'));
+  }
+  if(!cf.todoist_url)acts.push(setCfg('todoist_url',TODO_DEF));
+  if(acts.length)await act(acts);
+}
+
+/* Photos */
+let _tok=null;
+async function tok(){
+  if(_tok&&Date.now()<_tok.exp)return _tok;
+  const t=await grist.docApi.getAccessToken({readOnly:false});
+  _tok={baseUrl:t.baseUrl,token:t.token,exp:Date.now()+Math.max(60000,(t.ttlMsecs||300000)-30000)};
+  return _tok;
+}
+function shrink(file){
+  return new Promise(res=>{
+    if(!file.type.startsWith('image/'))return res(file);
+    const img=new Image();const u=URL.createObjectURL(file);
+    img.onload=()=>{
+      const k=Math.min(1,1600/Math.max(img.width,img.height));
+      const c=document.createElement('canvas');c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      c.toBlob(b=>{URL.revokeObjectURL(u);res(b||file);},'image/jpeg',0.82);
+    };
+    img.onerror=()=>res(file);img.src=u;
+  });
+}
+async function upload(files){
+  const t=await tok();const fd=new FormData();
+  for(const f of files){const b=await shrink(f);fd.append('upload',b,(f.name||'photo').replace(/\.\w+$/,'')+'.jpg');}
+  const r=await fetch(t.baseUrl+'/attachments?auth='+t.token,{method:'POST',body:fd});
+  if(!r.ok)throw new Error('Envoi des photos impossible ('+r.status+')');
+  return ['L'].concat(await r.json());
+}
+const attIds=v=>Array.isArray(v)?v.filter(x=>typeof x==='number'):[];
+async function fillImgs(){
+  const imgs=[...document.querySelectorAll('img[data-att]')];if(!imgs.length)return;
+  try{const t=await tok();imgs.forEach(i=>{i.src=t.baseUrl+'/attachments/'+i.dataset.att+'/download?auth='+t.token;});}catch(e){}
+}
+
+/* ---------- Logique métier ---------- */
+function lastRec(slot){
+  const cs=cycleStart();
+  return S.SU.filter(r=>r.Butte===S.butte&&r.Slot===slot.Code&&r.Date>=cs)
+    .sort((a,b)=>a.Date<b.Date?1:a.Date>b.Date?-1:b.id-a.id)[0];
+}
+const COUL={'Semé':'#f2c94c','Planté':'#6fcf97','Récolté':'#f2994a','Retiré':'#bdbdbd','Note':'#9ecbff'};
+function nextRecolte(plante,date){
+  const p=PM()[plante];if(!p)return '';const ms=mois(p.Mois_recolte);if(!ms.length)return '';
+  const d=new Date((date||today())+'T12:00:00');
+  for(let i=1;i<=13;i++){const t=new Date(d.getFullYear(),d.getMonth()+i,1);if(ms.includes(t.getMonth()+1))return iso(t);}
+  return '';
+}
+function defAction(slot){
+  const r=lastRec(slot);
+  if(r&&(r.Action==='Semé'||r.Action==='Planté'))return 'Récolté';
+  const p=PM()[slot.Plan];return p&&mois(p.Mois_semis).length?'Semé':'Planté';
+}
+
+/* ---------- Rendu : butte ---------- */
+function butteSVG(){
+  const sl=S.SL.filter(s=>s.Butte===S.butte&&(S.saison==='Tout'||s.Periode==='Tout'||s.Periode===S.saison));
+  sl.sort((a,b)=>(a.Forme==='zone'?0:1)-(b.Forme==='zone'?0:1));
+  let g='';
+  g+='<polygon points="0,0 345,0 345,160 0,160" fill="#f6f2e8" stroke="#a08a5a" stroke-width="1"/>';
+  g+='<polygon points="0,0 50,80 0,160" fill="#e8dcc4" stroke="#a08a5a"/><polygon points="345,0 295,80 345,160" fill="#e8dcc4" stroke="#a08a5a"/>';
+  g+='<rect x="50" y="0" width="245" height="30" fill="#efe0d0"/><rect x="50" y="130" width="245" height="30" fill="#efe0d0"/>';
+  [65,125,185,245,305].forEach(x=>g+=`<line x1="${x}" y1="0" x2="${x}" y2="160" stroke="#a08a5a" stroke-dasharray="4 4" stroke-width=".6"/>`);
+  g+='<line x1="55" y1="30" x2="295" y2="30" stroke="#d2691e" stroke-width="3"/><line x1="55" y1="130" x2="295" y2="130" stroke="#d2691e" stroke-width="3"/>';
+  g+='<line x1="55" y1="50" x2="295" y2="50" stroke="#d2691e" stroke-width="1"/><line x1="55" y1="110" x2="295" y2="110" stroke="#d2691e" stroke-width="1"/>';
+  g+='<line x1="55" y1="80" x2="295" y2="80" stroke="#d2691e" stroke-width=".8"/>';
+  g+='<line x1="232" y1="65" x2="295" y2="65" stroke="#5b7fcf" stroke-width="1.5"/><line x1="232" y1="95" x2="295" y2="95" stroke="#5b7fcf" stroke-width="1.5"/>';
+  [75,163].forEach(x=>g+=`<rect x="${x-10}" y="70" width="20" height="20" fill="#d2691e" opacity=".35"/>`);
+  sl.forEach(s=>{
+    const r=lastRec(s);const fill=r?COUL[r.Action]||'#ddd':'#ffffff';
+    const sel=S.sel===s.id;const stroke=sel?'#1976d2':(r?'#555':'#999');const sw=sel?2.2:.8;
+    const dash=r?'':'stroke-dasharray="2 2"';const op=r?1:.75;
+    const em=emojiRaw(r?r.Plante:s.Plan);
+    let sh;
+    if(s.Forme==='rond')sh=`<circle r="${s.W/2}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" ${dash}/>`;
+    else sh=`<rect x="${-s.W/2}" y="${-s.H/2}" width="${s.W}" height="${s.H}" rx="${s.Forme==='zone'?4:3}" fill="${fill}" fill-opacity="${s.Forme==='zone'&&!r?.35:op}" stroke="${stroke}" stroke-width="${sw}" ${dash}/>`;
+    const fs=s.Forme==='ligne'?9:Math.max(8,Math.min(s.W,s.H)*.72);
+    g+=`<g class="slot" data-slot="${s.id}" transform="translate(${s.X} ${s.Y})" opacity="${op}"><title>${esc(s.Libelle)}${r?' — '+esc(r.Action)+' '+esc(r.Plante)+' ('+esc(r.Date)+')':''}</title>${sh}${iconNode(em,fs)}</g>`;
+  });
+  if(S.cotes)g+=butteCotes();
+  return `<svg id="svg" class="${S.edit?'edit':''}" viewBox="-14 -34 425 246">${g}</svg>`;
+}
+const CC='#1976d2';
+function dH(x1,x2,y,l){return `<g stroke="${CC}" stroke-width=".6" fill="none" style="pointer-events:none"><line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}"/><line x1="${x1}" y1="${y-2.5}" x2="${x1}" y2="${y+2.5}"/><line x1="${x2}" y1="${y-2.5}" x2="${x2}" y2="${y+2.5}"/></g><text x="${(x1+x2)/2}" y="${y-1.6}" text-anchor="middle" font-size="6" fill="${CC}" style="pointer-events:none">${l}</text>`;}
+function dV(x,y1,y2,l,fz){return `<g stroke="${CC}" stroke-width=".6" fill="none" style="pointer-events:none"><line x1="${x}" y1="${y1}" x2="${x}" y2="${y2}"/><line x1="${x-2.5}" y1="${y1}" x2="${x+2.5}" y2="${y1}"/><line x1="${x-2.5}" y1="${y2}" x2="${x+2.5}" y2="${y2}"/></g><text x="${x+4}" y="${(y1+y2)/2}" dominant-baseline="central" font-size="${fz||5.5}" fill="${CC}" style="pointer-events:none">${l}</text>`;}
+function butteCotes(){
+  let g='';
+  g+=dH(0,345,-24,'3,45 m');
+  g+=dH(0,50,-8,'50')+dH(50,295,-8,'2,45 m')+dH(295,345,-8,'50');
+  [[0,30,'30'],[30,35,'5'],[35,50,'15'],[50,80,'30'],[80,110,'30'],[110,125,'15'],[125,130,'5'],[130,160,'30']].forEach(a=>g+=dV(352,a[0],a[1],a[2]));
+  g+=dV(374,0,160,'1,60 m',6);
+  [65,125,185,245].forEach(x=>g+=dH(x,x+60,190,'60'));
+  g+=dH(75,163,66,'90');
+  return g;
+}
+function panelSlot(){
+  const s=S.SL.find(x=>x.id===S.sel);
+  if(!s)return '<div class="card"><small>Touche un emplacement du schéma pour y semer, planter ou récolter.</small></div>';
+  if(S.edit){
+    return `<div class="card"><b>Modifier l'emplacement</b>
+    <label>Libellé</label><input id="e_lib" value="${esc(s.Libelle)}">
+    <label>Plante prévue</label><input id="e_plan" list="dl" value="${esc(s.Plan)}">
+    <label>Période d'affichage</label><select id="e_per">${['Tout','Automne','Printemps'].map(p=>`<option ${p===s.Periode?'selected':''}>${p}</option>`).join('')}</select>
+    <label>Forme</label><select id="e_forme">${['rond','ligne','zone'].map(p=>`<option ${p===s.Forme?'selected':''}>${p}</option>`).join('')}</select>
+    <div class="row"><div><label>X (cm)</label><input id="e_x" type="number" value="${s.X}" style="width:70px"></div><div><label>Y</label><input id="e_y" type="number" value="${s.Y}" style="width:70px"></div><div><label>Larg.</label><input id="e_w" type="number" value="${s.W}" style="width:70px"></div><div><label>Haut.</label><input id="e_h" type="number" value="${s.H}" style="width:70px"></div></div>
+    <div class="row"><button class="pri" data-act="saveSlot">Enregistrer</button><button class="dan" data-act="delSlot">Supprimer</button></div></div>${datalist()}`;
+  }
+  const r=lastRec(s);const a=defAction(s);const plante=r&&a==='Récolté'?r.Plante:s.Plan;
+  const hist=S.SU.filter(x=>x.Butte===S.butte&&x.Slot===s.Code).sort((a,b)=>a.Date<b.Date?1:-1);
+  const pl=PM()[plante];
+  return `<div class="card"><b>${esc(s.Libelle)}</b> <small>${esc(s.Code)}</small>
+  <div><small>Prévu au livre : ${emoji(s.Plan)} ${esc(s.Plan)}</small></div>
+  ${r?`<div class="chip" style="background:${COUL[r.Action]||'#eee'}">${esc(r.Action)} · ${esc(r.Plante)} · ${esc(r.Date)}</div>`:''}
+  <label>Plante</label><input id="f_plante" list="dl" value="${esc(plante)}">
+  <label>Action</label><select id="f_action">${['Semé','Planté','Récolté','Retiré','Note'].map(x=>`<option ${x===a?'selected':''}>${x}</option>`).join('')}</select>
+  <label>Date</label><input id="f_date" type="date" value="${today()}">
+  <label>Note</label><input id="f_note" placeholder="variété, quantité, observation…">
+  <label>Photo(s)</label><input id="f_photo" type="file" accept="image/*" multiple>
+  <label style="display:flex;gap:6px;align-items:center;color:#2b2b2b"><input id="f_rchk" type="checkbox" style="width:auto" ${nextRecolte(plante,today())&&a!=='Récolté'&&a!=='Retiré'&&a!=='Note'?'checked':''}> Rappel de récolte</label>
+  <input id="f_rdate" type="date" value="${nextRecolte(plante,today())}">
+  <div class="row"><button class="pri" data-act="saveSuivi" ${S.busy?'disabled':''}>${S.busy?'Enregistrement…':'Enregistrer'}</button></div>
+  ${pl&&pl.Notes?`<small>ℹ️ ${esc(pl.Notes)}${pl.Qte_4pers?' · 4 pers. : '+esc(pl.Qte_4pers):''}</small>`:''}
+  ${hist.length?'<div style="margin-top:8px"><b style="font-size:12px">Historique</b>'+hist.map(h=>`<div class="hist">${esc(h.Date)} · ${esc(h.Action)} ${esc(h.Plante)} ${h.Note?'— '+esc(h.Note):''}<div class="thumbs">${attIds(h.Photos).map(i=>`<img data-att="${i}" alt="">`).join('')}</div></div>`).join('')+'</div>':''}
+  </div>${datalist()}`;
+}
+const datalist=()=>`<datalist id="dl">${S.P.map(p=>`<option value="${esc(p.Nom)}">`).join('')}</datalist>`;
+function bandeau(){
+  let h='';
+  const lim=iso(new Date(Date.now()+14*864e5));
+  const due=S.RA.filter(r=>!r.Fait&&r.Date&&r.Date<=lim&&(!r.Butte||r.Butte===S.butte)).sort((a,b)=>a.Date<b.Date?-1:1);
+  if(due.length)h+=`<div class="warn"><b>⏰ À faire (≤ 14 j)</b><br>${due.map(r=>`${esc(r.Date)} — ${esc(r.Texte)}${r.Date<today()?' <b>(en retard)</b>':''} <a class="btn" href="${esc(todoUrl(r))}" target="_blank" rel="noopener">➕ Todoist</a>`).join('<br>')}</div>`;
+  const m=new Date().getMonth()+1;
+  const g=k=>S.P.filter(p=>mois(p[k]).includes(m)).map(p=>`${ico(p.Emoji)} ${esc(p.Nom)}`);
+  const s=g('Mois_semis'),p=g('Mois_plantation'),r=g('Mois_recolte');
+  h+=`<div class="card" style="margin:6px 0"><b>Ce mois-ci (${MOIS[m-1]})</b><br>${s.length?`<span class="chip S">Semer</span>${s.join(', ')}<br>`:''}${p.length?`<span class="chip P">Planter</span>${p.join(', ')}<br>`:''}${r.length?`<span class="chip R">Récolter</span>${r.join(', ')}`:''}</div>`;
+  return h;
+}
+function tabButte(){
+  const buttes=S.JA.filter(o=>o.Type==='butte');
+  if(!buttes.length)return '<div class="card">Aucune butte : ajoute-en une dans l\'onglet Jardin.</div>';
+  return bandeau()+`<div class="row sp"><div class="row">
+    ${buttes.length>1?`<select id="sel_butte">${buttes.map(b=>`<option ${b.Nom===S.butte?'selected':''}>${esc(b.Nom)}</option>`).join('')}</select>`:`<b>${esc(S.butte)}</b>`}
+    ${['Automne','Printemps','Tout'].map(s=>`<button class="${S.saison===s?'on':''}" data-saison="${s}">${s==='Automne'?'Sept–oct':s==='Printemps'?'Mai–juil.':'Tout'}</button>`).join('')}
+    </div><div class="row"><small>Cycle depuis ${cycleStart()}</small><button class="${S.cotes?'on':''}" data-act="toggleCotes">📏 Cotes</button><button class="${S.edit?'on':''}" data-act="toggleEdit">✏️ Modifier le plan</button>${S.edit?'<button data-act="addSlot">+ Emplacement</button>':''}</div></div>
+    <div class="grid"><div class="card">${butteSVG()}
+    <div class="leg"><span><i style="background:#fff;border-style:dashed"></i>prévu</span>${Object.keys(COUL).map(k=>`<span><i style="background:${COUL[k]}"></i>${k}</span>`).join('')}</div>
+    ${S.edit?'<small>Mode modification : glisse les emplacements pour les déplacer. Les positions « mai–juillet » sont approximatives, à caler sur le schéma du livre.</small>':''}</div>
+    <div id="panel">${panelSlot()}</div></div>`;
+}
+
+/* ---------- Rendu : jardin ---------- */
+const COL_OBJ={butte:'#c8a27a',arbre:'#7cb86a',maison:'#bdbdbd',maison_rdc:'#bdbdbd',composteur:'#8d6e63',eau:'#64b5f6',allee:'#e4dcc4',autre:'#f0e6a8',terrain:'#e3edcf'};
+const LAYER={terrain:0,allee:1};
+const fm=v=>(v/100).toFixed(2).replace('.',',');
+function viewBoxFor(){
+  const gw=+cfg('jardin_w',40)*100,gh=+cfg('jardin_h',24)*100;
+  let list=S.JA;
+  if(S.vue!=='Tout'){const key=S.vue==='Devant'?'devant':'derri';const t=S.JA.filter(o=>o.Type==='terrain'&&String(o.Nom).toLowerCase().includes(key));if(t.length)list=t;}
+  if(!list.length)return [0,0,gw,gh];
+  let x1=1e9,y1=1e9,x2=-1e9,y2=-1e9;
+  list.forEach(o=>{const a=(((o.Angle||0)%180)+180)%180;const sw=a===90?o.H:o.W,sh=a===90?o.W:o.H;const cx=o.X+o.W/2,cy=o.Y+o.H/2;x1=Math.min(x1,cx-sw/2);x2=Math.max(x2,cx+sw/2);y1=Math.min(y1,cy-sh/2);y2=Math.max(y2,cy+sh/2);});
+  const m=Math.max(150,(x2-x1)*0.07);
+  return [x1-m,y1-m,x2-x1+2*m,y2-y1+2*m];
+}
+function houseSVG(fs){
+  const T='translate(992 0) rotate(90) scale(1.48) translate(-82 -195)';
+  const P=(px,py)=>[992-(py-195)*1.48,(px-82)*1.48];
+  const R=(x,y,w,h,f)=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${f}" stroke="#555" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`;
+  const Ln=(x1,y1,x2,y2,c,w)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="${w}" vector-effect="non-scaling-stroke"/>`;
+  let g=`<g transform="${T}">`;
+  g+=`<polygon points="82,195 832,195 832,865 525,865 525,797 82,797" fill="#e9e5da" stroke="#333" stroke-width="2.2" vector-effect="non-scaling-stroke"/>`;
+  g+=`<rect x="82" y="797" width="443" height="68" fill="#f3f0e6" stroke="#999" stroke-width="1" stroke-dasharray="6 4" vector-effect="non-scaling-stroke"/>`;
+  g+=R(103,215,235,245,'#fbf9f2')+R(338,215,260,245,'#fbf9f2')+R(103,460,247,53,'#f0ebdd')+R(103,525,247,255,'#fbf9f2')+R(350,465,115,300,'#f6f3ea')+R(465,540,65,110,'#fbf9f2')+R(460,655,70,95,'#f0ebdd')+R(530,205,300,645,'#eceae4');
+  g+=`<rect x="770" y="435" width="34" height="30" fill="#222"/>`;
+  g+=Ln(190,197,285,197,'#2a8bd9',3)+Ln(415,197,510,197,'#2a8bd9',3)+Ln(175,781,270,781,'#2a8bd9',3)+Ln(370,797,430,797,'#a0522d',3)+Ln(600,865,765,865,'#d2691e',3);
+  g+='</g>';
+  const L=(px,py,t,t2)=>{const p=P(px,py);return `<text x="${p[0]}" y="${p[1]}" text-anchor="middle" font-size="${fs}" fill="#444" style="pointer-events:none">${t}${t2&&S.cotes?`<tspan x="${p[0]}" dy="${fs*1.2}" font-size="${fs*.8}" fill="${CC}">${t2}</tspan>`:''}</text>`;};
+  g+=L(220,330,'Séjour','3,50 × 4,44')+L(468,330,'Salle à manger','3,85 × 3,65')+L(228,650,'Cuisine','3,69 × 3,76')+L(407,610,'Hall','1,55 × 4,55')+L(497,600,'WC')+L(668,520,'Garage','4,00 × 9,40')+L(380,835,'Entrée');
+  return g;
+}
+function cotesObj(o,fs){
+  const w=o.W,h=o.H,t=fs*.5,y=-fs*.9,x=-fs*.9,sw=fs/14,ap=o.Type==='maison_rdc'?'≈ ':'';
+  const tk=(x1,y1,x2,y2)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+  return `<g stroke="${CC}" stroke-width="${sw}" fill="none" style="pointer-events:none">${tk(0,y,w,y)}${tk(0,y-t,0,y+t)}${tk(w,y-t,w,y+t)}${tk(x,0,x,h)}${tk(x-t,0,x+t,0)}${tk(x-t,h,x+t,h)}</g><text x="${w/2}" y="${y-fs*.25}" text-anchor="middle" font-size="${fs*.8}" fill="${CC}" style="pointer-events:none">${ap}${fm(w)} m</text><text transform="translate(${x-fs*.25} ${h/2}) rotate(-90)" text-anchor="middle" font-size="${fs*.8}" fill="${CC}" style="pointer-events:none">${ap}${fm(h)} m</text>`;
+}
+function jardinSVG(){
+  const vb=viewBoxFor();const fs=Math.max(14,vb[2]/55);
+  let g=`<rect x="${vb[0]}" y="${vb[1]}" width="${vb[2]}" height="${vb[3]}" fill="#f1efe4"/>`;
+  for(let x=Math.ceil(vb[0]/100)*100;x<vb[0]+vb[2];x+=100)g+=`<line x1="${x}" y1="${vb[1]}" x2="${x}" y2="${vb[1]+vb[3]}" stroke="#e2dfd0" stroke-width="${fs/25}"/>`;
+  for(let y=Math.ceil(vb[1]/100)*100;y<vb[1]+vb[3];y+=100)g+=`<line x1="${vb[0]}" y1="${y}" x2="${vb[0]+vb[2]}" y2="${y}" stroke="#e2dfd0" stroke-width="${fs/25}"/>`;
+  const objs=S.JA.slice().sort((a,b)=>((LAYER[a.Type]??2)-(LAYER[b.Type]??2))||(a.id-b.id));
+  objs.forEach(o=>{
+    const w=o.W,h=o.H,sel=S.selG===o.id,a=o.Angle||0,cx=w/2,cy=h/2;
+    const col=COL_OBJ[o.Type]||'#ddd',sk=sel?'#1976d2':'#666',sw=sel?fs/4:fs/10;
+    let sh;
+    if(o.Type==='maison_rdc')sh=houseSVG(Math.min(fs*.6,38))+`<rect width="${w}" height="${h}" fill="transparent" stroke="${sel?'#1976d2':'none'}" stroke-width="${fs/4}"/>`;
+    else if(o.Type==='arbre'||o.Type==='eau')sh=`<ellipse cx="${cx}" cy="${cy}" rx="${w/2}" ry="${h/2}" fill="${col}" stroke="${sk}" stroke-width="${sw}"/>`;
+    else sh=`<rect width="${w}" height="${h}" rx="${fs/4}" fill="${col}" stroke="${o.Type==='terrain'&&!sel?'#8aa06a':sk}" stroke-width="${sw}" ${o.Type==='allee'?'opacity=".7"':''}/>`;
+    if(o.Type==='butte')sh+=`<line x1="${w*.15}" y1="${cy}" x2="${w*.85}" y2="${cy}" stroke="#d2691e" stroke-width="${fs/6}"/>`;
+    let lab='';
+    if(o.Type==='terrain')lab=`<text x="${fs*.6}" y="${fs*1.6}" font-size="${fs}" fill="#4d6b2a" font-weight="600" style="pointer-events:none">${esc(o.Nom)}</text>`;
+    else if(o.Type!=='maison_rdc')lab=`<text transform="rotate(${-a} ${cx} ${cy})" x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" font-size="${fs}" style="pointer-events:none">${esc(o.Nom)}</text>`;
+    g+=`<g class="obj" data-obj="${o.id}" transform="translate(${o.X} ${o.Y})"><g transform="rotate(${a} ${cx} ${cy})">${sh}${lab}${S.cotes?cotesObj(o,fs):''}</g></g>`;
+  });
+  g+=`<g transform="translate(${vb[0]+vb[2]-fs*2.5} ${vb[1]+fs*4})" style="pointer-events:none"><polygon points="0,${-fs*2} ${fs*.7},0 ${-fs*.7},0" fill="#333"/><text y="${fs*1.4}" text-anchor="middle" font-size="${fs*1.2}" font-weight="700">N</text></g>`;
+  return `<svg id="svg" class="${S.edit?'edit':''}" viewBox="${vb.join(' ')}">${g}</svg>`;
+}
+function panelObj(){
+  const o=S.JA.find(x=>x.id===S.selG);
+  if(!o)return '<div class="card"><small>Touche un élément du plan. Une butte ouvre son schéma.</small></div>';
+  return `<div class="card"><b>${esc(o.Nom)}</b> <small>${esc(o.Type)}</small>
+  <label>Nom</label><input id="o_nom" value="${esc(o.Nom)}">
+  <div class="row"><div><label>Larg. (cm)</label><input id="o_w" type="number" value="${o.W}" style="width:80px"></div><div><label>Long. (cm)</label><input id="o_h" type="number" value="${o.H}" style="width:80px"></div><div><label>Angle °</label><input id="o_a" type="number" value="${o.Angle||0}" style="width:70px"></div></div>
+  <div class="row"><button class="pri" data-act="saveObj">Enregistrer</button><button data-act="rotObj">↻ 90°</button><button class="dan" data-act="delObj">Supprimer</button></div>
+  ${o.Type==='butte'?'<div class="row"><button data-act="openButte">Ouvrir le schéma de cette butte</button></div>':''}
+  ${o.Type==='terrain'?'<small>Terrain rectangulaire : règle largeur et longueur (cm) d\'après tes mesures.</small>':''}
+  ${o.Type==='maison_rdc'?'<small>Plan du rez-de-chaussée simplifié, orienté entrée à l\'ouest. Dimensions du dessin fixes.</small>':''}</div>`;
+}
+function tabJardin(){
+  const vues=[['Tout','Plan complet'],['Devant','Jardin devant (ouest)'],['Derrière','Jardin derrière (est)']];
+  return `<div class="row sp"><div class="row">${vues.map(v=>`<button class="${S.vue===v[0]?'on':''}" data-vue="${v[0]}">${v[1]}</button>`).join('')}<button class="${S.cotes?'on':''}" data-act="toggleCotes">📏 Cotes</button></div>
+  <div class="row"><select id="n_type">${Object.keys(TYPES_JARDIN).map(k=>`<option value="${k}">${TYPES_JARDIN[k][0]}</option>`).join('')}</select><button data-act="addObj">+ Ajouter</button><button class="${S.edit?'on':''}" data-act="toggleEdit">✏️ Déplacer</button></div></div>
+  <div class="grid"><div class="card">${jardinSVG()}<small>Nord en haut. Quadrillage = 1 m. « Déplacer » active le glisser-déposer. Les terrains sont des rectangles provisoires : ajuste largeur/longueur dans le panneau.</small></div><div id="panel">${panelObj()}</div></div>`;
+}
+
+/* ---------- Rendu : calendrier, journal, rappels ---------- */
+function tablePlantes(){
+  const cur=new Date().getMonth()+1,q=S.q.trim().toLowerCase();
+  const rows=S.P.filter(p=>!q||String(p.Nom).toLowerCase().includes(q)).sort((a,b)=>String(a.Nom).localeCompare(String(b.Nom),'fr'));
+  let h='<table><tr><th class="l">Légume</th>'+ORDRE.map(m=>`<th class="${m===cur?'cur':''}">${MOIS[m-1]}</th>`).join('')+'<th class="l">Quantité (4 pers.)</th><th>Espacement<br><small>plants × rangs (cm)</small></th><th></th></tr>';
+  rows.forEach(p=>{
+    const s=mois(p.Mois_semis),pl=mois(p.Mois_plantation),r=mois(p.Mois_recolte);
+    h+=`<tr><td class="l">${ico(p.Emoji)} ${esc(p.Nom)}</td>`+ORDRE.map(m=>{
+      const c=[];if(s.includes(m))c.push('<span class="chip S">S</span>');if(pl.includes(m))c.push('<span class="chip P">P</span>');if(r.includes(m))c.push('<span class="chip R">R</span>');
+      return `<td class="${m===cur?'cur':''}">${c.join('')}</td>`;}).join('')+`<td class="l"><small>${esc(p.Qte_4pers)}</small></td><td>${p.Espacement||p.Entre_rangs?esc(p.Espacement||'?')+' × '+esc(p.Entre_rangs||'?'):'—'}</td><td><button data-pedit="${p.id}" title="Modifier">✏️</button></td></tr>`;
+  });
+  return h+'</table>';
+}
+function plantEditor(){
+  if(S.pe===null)return '';
+  const p=S.pe==='new'?{Nom:'',Emoji:'🌱',Type:'Semis',Mois_semis:'',Mois_plantation:'',Mois_recolte:'',Qte_4pers:'',Espacement:'',Entre_rangs:'',Notes:''}:S.P.find(x=>x.id===S.pe);
+  if(!p)return '';
+  const row=(k,l,v)=>{const ms=mois(v);return `<div class="row"><b style="width:80px;font-size:12px">${l}</b>${ORDRE.map(m=>`<label class="mchk"><input type="checkbox" id="pm_${k}_${m}" ${ms.includes(m)?'checked':''}>${MOIS[m-1]}</label>`).join('')}</div>`;};
+  return `<div class="card" style="margin:8px 0;background:#faf8f3"><b>${S.pe==='new'?'Nouveau légume':'Modifier : '+esc(p.Nom)}</b>
+  <div class="row"><div><label>Nom</label><input id="p_nom" value="${esc(p.Nom)}"></div><div><label>Type</label><select id="p_type">${['Semis','Plantation','Division','Bouture'].map(t=>`<option ${t===p.Type?'selected':''}>${t}</option>`).join('')}</select></div><div><label>Icône</label><input id="p_emoji" value="${esc(p.Emoji)}" style="width:120px"></div></div>
+  <div class="emo">${EMOJIS.map(e=>`<button data-emo="${esc(e)}" title="${esc(e)}">${ico(e)}</button>`).join('')}</div>
+  ${row('s','Semis',p.Mois_semis)}${row('p','Plantation',p.Mois_plantation)}${row('r','Récolte',p.Mois_recolte)}
+  <div class="row"><div><label>Quantité (4 pers.)</label><input id="p_qte" value="${esc(p.Qte_4pers)}"></div><div><label>Entre plants (cm)</label><input id="p_esp" value="${esc(p.Espacement)}" style="width:100px"></div><div><label>Entre rangs (cm)</label><input id="p_rang" value="${esc(p.Entre_rangs)}" style="width:100px"></div></div>
+  <label>Notes</label><input id="p_notes" value="${esc(p.Notes)}">
+  <div class="row"><button class="pri" data-act="savePlante">Enregistrer</button><button data-act="cancelPlante">Annuler</button>${S.pe!=='new'?'<button class="dan" data-act="delPlante">Supprimer</button>':''}</div>
+  ${S.pe!=='new'?'<small>Renommer un légume ne met pas à jour les entrées déjà saisies dans le journal.</small>':''}</div>`;
+}
+function tabCalendrier(){
+  return `<div class="card" style="overflow:auto"><div class="row sp"><div class="row"><input id="p_search" placeholder="Rechercher un légume…" value="${esc(S.q)}"><button class="pri" data-act="newPlante">+ Nouveau légume</button></div><small>${S.P.length} légumes</small></div>${plantEditor()}<div id="ptable">${tablePlantes()}</div><small><span class="chip S">S</span> semis · <span class="chip P">P</span> plantation/multiplication · <span class="chip R">R</span> récolte. Quantités et périodes : tableau du livre. Espacements et mois de récolte hors livre : valeurs usuelles indicatives, modifiables (✏️).</small></div>`;
+}
+function tabJournal(){
+  const rows=S.SU.slice().sort((a,b)=>a.Date<b.Date?1:a.Date>b.Date?-1:b.id-a.id);
+  if(!rows.length)return '<div class="card">Aucune entrée. Sélectionne un emplacement sur la butte pour commencer.</div>';
+  return '<div class="card">'+rows.map(r=>`<div class="hist"><div class="row sp"><span><b>${esc(r.Date)}</b> · <span class="chip" style="background:${COUL[r.Action]||'#eee'}">${esc(r.Action)}</span> ${emoji(r.Plante)} ${esc(r.Plante)} <small>(${esc(r.Butte)} · ${esc(r.Slot)})</small> ${r.Note?'— '+esc(r.Note):''}</span><button class="dan" data-delsu="${r.id}">✕</button></div><div class="thumbs">${attIds(r.Photos).map(i=>`<img data-att="${i}" alt="">`).join('')}</div></div>`).join('')+'</div>';
+}
+function tabRappels(){
+  const rows=S.RA.slice().sort((a,b)=>(a.Fait-b.Fait)||(a.Date<b.Date?-1:1));
+  return `<div class="card"><div class="row"><input id="r_date" type="date" value="${today()}"><input id="r_txt" placeholder="Rappel…" style="flex:1;min-width:160px"><button class="pri" data-act="addRappel">Ajouter</button></div>
+  ${rows.map(r=>`<div class="hist row sp"><label style="display:flex;gap:6px;align-items:center;margin:0;color:#2b2b2b"><input type="checkbox" style="width:auto" data-fait="${r.id}" ${r.Fait?'checked':''}> <span style="${r.Fait?'text-decoration:line-through;color:#999':''}">${esc(r.Date)} — ${esc(r.Texte)} ${r.Butte?'<small>('+esc(r.Butte)+')</small>':''}${!r.Fait&&r.Date<today()?' <b style="color:#b3261e">en retard</b>':''}</span></label><span><a class="btn" href="${esc(todoUrl(r))}" target="_blank" rel="noopener">➕ Todoist</a> <button class="dan" data-delra="${r.id}">✕</button></span></div>`).join('')||'<small>Aucun rappel.</small>'}<div style="margin-top:10px"><label>Modèle d'URL Todoist ({texte} {date} {desc} {butte})</label><input id="c_todo" value="${esc(cfg('todoist_url',TODO_DEF))}"><small>Web : https://todoist.com/add?content=…&amp;date=… · App mobile : todoist://addtask?content={texte}&amp;date={date}</small></div></div>`;
+}
+
+/* ---------- Rendu global ---------- */
+function render(){
+  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on',b.dataset.tab===S.tab));
+  const f={butte:tabButte,jardin:tabJardin,calendrier:tabCalendrier,journal:tabJournal,rappels:tabRappels}[S.tab];
+  document.getElementById('app').innerHTML=(S.err?`<div class="err">${esc(S.err)}</div>`:'')+f();
+  fillImgs();
+}
+const $=id=>document.getElementById(id);
+const run=async fn=>{try{S.err='';await fn();}catch(e){S.err=(e&&e.message)||String(e);}render();};
+
+/* ---------- Événements ---------- */
+document.addEventListener('click',e=>{
+  const t=e.target;
+  if(t.dataset.tab){S.tab=t.dataset.tab;S.edit=false;return render();}
+  if(t.dataset.saison){S.saison=t.dataset.saison;return render();}
+  if(t.dataset.vue){S.vue=t.dataset.vue;return render();}
+  const eb=t.closest&&t.closest('[data-emo]');if(eb){const i=$('p_emoji');if(i)i.value=eb.dataset.emo;return;}
+  const pb=t.closest&&t.closest('[data-pedit]');if(pb){S.pe=+pb.dataset.pedit;return render();}
+  const sg=t.closest&&t.closest('[data-slot]');
+  if(sg&&!S.edit){S.sel=+sg.dataset.slot;return render();}
+  const og=t.closest&&t.closest('[data-obj]');
+  if(og&&!S.edit){S.selG=+og.dataset.obj;return render();}
+  if(t.tagName==='IMG'&&t.src){window.open(t.src,'_blank');return;}
+  if(t.dataset.delsu){if(confirm('Supprimer cette entrée ?'))run(async()=>{await act([['RemoveRecord',TB.suivi,+t.dataset.delsu]]);await reload();});return;}
+  if(t.dataset.delra){run(async()=>{await act([['RemoveRecord',TB.rappels,+t.dataset.delra]]);await reload();});return;}
+  const a=t.dataset.act;if(!a)return;
+  const A={
+    toggleEdit(){S.edit=!S.edit;render();},
+    toggleCotes(){S.cotes=!S.cotes;try{localStorage.setItem('butte_cotes',S.cotes?'1':'0');}catch(e){}render();},
+    newPlante(){S.pe='new';render();},
+    cancelPlante(){S.pe=null;render();},
+    async savePlante(){
+      const nom=$('p_nom').value.trim();if(!nom)throw new Error('Donne un nom au légume.');
+      const ms=k=>ORDRE.filter(m=>$('pm_'+k+'_'+m).checked).join(',');
+      const rec={Nom:nom,Emoji:$('p_emoji').value.trim()||'🌱',Type:$('p_type').value,Mois_semis:ms('s'),Mois_plantation:ms('p'),Mois_recolte:ms('r'),Qte_4pers:$('p_qte').value,Espacement:$('p_esp').value,Entre_rangs:$('p_rang').value,Notes:$('p_notes').value};
+      if(S.pe==='new'){
+        if(S.P.some(p=>String(p.Nom).toLowerCase()===nom.toLowerCase()))throw new Error('Ce légume existe déjà.');
+        await act([['AddRecord',TB.plantes,null,rec]]);
+      }else await act([['UpdateRecord',TB.plantes,S.pe,rec]]);
+      S.pe=null;await reload();
+    },
+    async delPlante(){const p=S.P.find(x=>x.id===S.pe);if(!p||!confirm('Supprimer « '+p.Nom+' » du catalogue ?'))return;await act([['RemoveRecord',TB.plantes,S.pe]]);S.pe=null;await reload();},
+    async saveSuivi(){
+      const s=S.SL.find(x=>x.id===S.sel);const plante=$('f_plante').value.trim();if(!plante)throw new Error('Choisis une plante.');
+      const action=$('f_action').value,date=$('f_date').value||today();
+      const files=[...$('f_photo').files];const chk=$('f_rchk').checked,rd=$('f_rdate').value;
+      S.busy=true;render();
+      try{
+        const rec={Butte:S.butte,Slot:s.Code,Plante:plante,Action:action,Date:date,Note:$('f_note').value};
+        if(files.length)rec.Photos=await upload(files);
+        const acts=[['AddRecord',TB.suivi,null,rec]];
+        if(chk&&rd)acts.push(['AddRecord',TB.rappels,null,{Date:rd,Texte:'Récolter '+plante+' ('+s.Libelle+')',Butte:S.butte,Fait:false}]);
+        await act(acts);await reload();
+      }finally{S.busy=false;}
+    },
+    async saveSlot(){
+      await act([['UpdateRecord',TB.slots,S.sel,{Libelle:$('e_lib').value,Plan:$('e_plan').value,Periode:$('e_per').value,Forme:$('e_forme').value,X:+$('e_x').value,Y:+$('e_y').value,W:+$('e_w').value,H:+$('e_h').value}]]);await reload();
+    },
+    async delSlot(){if(!confirm('Supprimer cet emplacement ?'))return;await act([['RemoveRecord',TB.slots,S.sel]]);S.sel=null;await reload();},
+    async addSlot(){
+      const per=S.saison==='Tout'?'Printemps':S.saison;
+      await act([['AddRecord',TB.slots,null,{Butte:S.butte,Code:'N-'+(Date.now()%100000),Libelle:'Nouvel emplacement',Periode:per,Forme:'rond',X:172,Y:80,W:16,H:16,Plan:''}]]);
+      await reload();S.sel=S.SL[S.SL.length-1].id;
+    },
+    async addObj(){
+      const k=$('n_type').value,d=TYPES_JARDIN[k];const gw=+cfg('jardin_w',15)*100,gh=+cfg('jardin_h',10)*100;
+      let nom=d[0];
+      if(k==='butte'){const n=S.JA.filter(o=>o.Type==='butte').length;nom='Butte '+String.fromCharCode(65+n);}
+      const acts=[['AddRecord',TB.jardin,null,{Type:k,Nom:nom,X:Math.round((gw-d[1])/2),Y:Math.round((gh-d[2])/2),W:d[1],H:d[2],Angle:k==='butte'?90:0}]];
+      if(k==='butte')acts.push(bulk(TB.slots,SEED.map(s=>Object.assign({Butte:nom},s)),COLS.slots.map(c=>c[0])));
+      await act(acts);await reload();S.selG=S.JA[S.JA.length-1].id;
+    },
+    async saveObj(){await act([['UpdateRecord',TB.jardin,S.selG,{Nom:$('o_nom').value,W:+$('o_w').value,H:+$('o_h').value,Angle:+$('o_a').value}]]);await reload();},
+    async rotObj(){const o=S.JA.find(x=>x.id===S.selG);await act([['UpdateRecord',TB.jardin,S.selG,{Angle:((o.Angle||0)+90)%360}]]);await reload();},
+    async delObj(){const o=S.JA.find(x=>x.id===S.selG);if(!confirm('Supprimer « '+o.Nom+' » du plan ?'))return;await act([['RemoveRecord',TB.jardin,S.selG]]);S.selG=null;await reload();},
+    openButte(){const o=S.JA.find(x=>x.id===S.selG);S.butte=o.Nom;S.tab='butte';S.edit=false;render();},
+    async addRappel(){const t=$('r_txt').value.trim();if(!t)return;await act([['AddRecord',TB.rappels,null,{Date:$('r_date').value||today(),Texte:t,Butte:'',Fait:false}]]);await reload();}
+  }[a];
+  if(A)run(async()=>{await A();});
+});
+document.addEventListener('change',e=>{
+  const t=e.target;
+  if(t.id==='sel_butte'){S.butte=t.value;S.sel=null;return render();}
+  if(t.id==='c_todo'){const r=S.CF.find(c=>c.Cle==='todoist_url');run(async()=>{await act([r?['UpdateRecord',TB.config,r.id,{Valeur:t.value}]:['AddRecord',TB.config,null,{Cle:'todoist_url',Valeur:t.value}]]);await reload();});return;}
+  if(t.dataset.fait){run(async()=>{await act([['UpdateRecord',TB.rappels,+t.dataset.fait,{Fait:t.checked}]]);await reload();});return;}
+  if(t.id==='c_w'||t.id==='c_h'){
+    const k=t.id==='c_w'?'jardin_w':'jardin_h';const r=S.CF.find(c=>c.Cle===k);
+    run(async()=>{await act([r?['UpdateRecord',TB.config,r.id,{Valeur:t.value}]:['AddRecord',TB.config,null,{Cle:k,Valeur:t.value}]]);await reload();});return;
+  }
+  if(t.id==='f_plante'||t.id==='f_action'||t.id==='f_date'){
+    const p=$('f_plante').value,a=$('f_action').value,d=$('f_date').value;
+    const nr=nextRecolte(p,d);$('f_rdate').value=nr;$('f_rchk').checked=!!nr&&(a==='Semé'||a==='Planté');
+  }
+});
+document.addEventListener('input',e=>{if(e.target.id==='p_search'){S.q=e.target.value;const el=$('ptable');if(el)el.innerHTML=tablePlantes();}});
+/* Glisser-déposer en mode modification */
+let drag=null;
+function svgPt(svg,e){const p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;return p.matrixTransform(svg.getScreenCTM().inverse());}
+document.addEventListener('pointerdown',e=>{
+  if(!S.edit)return;
+  const g=e.target.closest&&e.target.closest('[data-slot],[data-obj]');if(!g)return;
+  const isSlot=g.dataset.slot!==undefined;const id=+(isSlot?g.dataset.slot:g.dataset.obj);
+  const rec=(isSlot?S.SL:S.JA).find(r=>r.id===id);const svg=g.ownerSVGElement;const p=svgPt(svg,e);
+  drag={g,svg,isSlot,id,rec,p0:p,x0:rec.X,y0:rec.Y,moved:false};e.preventDefault();
+});
+document.addEventListener('pointermove',e=>{
+  if(!drag)return;const p=svgPt(drag.svg,e);const snap=drag.isSlot?1:10;
+  const dx=p.x-drag.p0.x,dy=p.y-drag.p0.y;if(Math.abs(dx)+Math.abs(dy)>3)drag.moved=true;if(!drag.moved)return;
+  drag.rec.X=Math.round((drag.x0+dx)/snap)*snap;drag.rec.Y=Math.round((drag.y0+dy)/snap)*snap;
+  drag.g.setAttribute('transform','translate('+drag.rec.X+' '+drag.rec.Y+')');
+});
+document.addEventListener('pointerup',()=>{
+  if(!drag)return;const d=drag;drag=null;
+  if(d.moved){run(async()=>{await act([['UpdateRecord',d.isSlot?TB.slots:TB.jardin,d.id,{X:d.rec.X,Y:d.rec.Y}]]);if(d.isSlot)S.sel=d.id;else S.selG=d.id;await reload();});}
+  else{if(d.isSlot)S.sel=d.id;else S.selG=d.id;render();}
+});
+
+/* ---------- Démarrage ---------- */
+grist.ready({requiredAccess:'full'});
+(async()=>{
+  try{await ensure();await reload();}catch(e){S.err='Initialisation impossible : '+((e&&e.message)||e);}
+  render();
+})();
+</script>
+</body>
+</html>
